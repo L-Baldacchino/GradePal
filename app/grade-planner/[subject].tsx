@@ -9,12 +9,12 @@ import {
     Modal,
     Platform,
     Pressable,
-    SafeAreaView,
     StyleSheet,
     Text,
     TextInput,
     View,
 } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../theme/ThemeProvider";
 
 export type Assessment = {
@@ -44,6 +44,8 @@ export default function SubjectPlannerScreen() {
   const s = makeStyles(theme);
   const { subject } = useLocalSearchParams<{ subject: string }>();
   const nav = useNavigation();
+  const insets = useSafeAreaInsets();
+
   const code = decodeURIComponent(subject ?? "").toUpperCase();
   const STORAGE_KEY = `grade-planner:${code}`;
 
@@ -106,19 +108,24 @@ export default function SubjectPlannerScreen() {
   }
 
   return (
-    <SafeAreaView style={s.screen}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+    <SafeAreaView style={[s.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={0}
+      >
         {/* Accumulated Grade */}
         <View style={s.banner}>
           <Text style={s.bannerLabel}>Accumulated Grade so far</Text>
           <Text style={s.bannerValue}>{sumContribution.toFixed(1)}%</Text>
         </View>
 
-        {/* List */}
+        {/* List (keeps last input visible while typing) */}
         <FlatList
           data={items}
           keyExtractor={(i) => i.id}
-          contentContainerStyle={{ padding: 16, paddingBottom: 180 }}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 220 }}
           ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
           renderItem={({ item }) => (
             <View style={s.card}>

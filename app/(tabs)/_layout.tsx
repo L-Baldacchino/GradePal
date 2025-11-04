@@ -9,7 +9,6 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        // Tab bar theming
         tabBarStyle: {
           backgroundColor: theme.navBg,
           borderTopColor: theme.border,
@@ -17,11 +16,7 @@ export default function TabsLayout() {
         tabBarActiveTintColor: theme.primary,
         tabBarInactiveTintColor: theme.textMuted,
         tabBarLabelStyle: { fontWeight: "600" },
-
-        // Page background behind each screen
         sceneContainerStyle: { backgroundColor: theme.bg },
-
-        // Default header styling for tabs that keep a header
         headerStyle: { backgroundColor: theme.navBg },
         headerTintColor: theme.navText,
         headerTitleStyle: { color: theme.navText },
@@ -41,15 +36,12 @@ export default function TabsLayout() {
         name="pomodoro"
         options={{
           title: "Pomodoro",
-          // Hide the native header (removes the white bar)
-          headerShown: false,
+          headerShown: false, // hide native header (we render our own)
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="timer" color={color} size={size} />
           ),
         }}
       />
-
-      {/* add other tabs here... */}
     </Tabs>
   );
 }

@@ -1,7 +1,7 @@
 // app/(tabs)/pomodoro.tsx
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -9,14 +9,15 @@ import {
   Modal,
   Platform,
   Pressable,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
   Vibration,
   View,
 } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../theme/ThemeProvider";
+
 type Subject = { code: string; name: string };
 
 const SUBJECTS_KEY = "subjects:v1";
@@ -39,6 +40,7 @@ function formatMMSS(totalSeconds: number) {
 export default function PomodoroScreen() {
   const { theme, toggleTheme } = useTheme();
   const s = makeStyles(theme);
+  const insets = useSafeAreaInsets();
 
   // Durations
   const [focusMin, setFocusMin] = useState(25);
@@ -60,11 +62,6 @@ export default function PomodoroScreen() {
   // Time edit modal
   const [editTimeVisible, setEditTimeVisible] = useState(false);
   const [timeInput, setTimeInput] = useState("");
-
-  // Themed header with toggle
-  useLayoutEffect(() => {
-    // Expo Router Tabs provides header, we theme it here
-  }, [theme]);
 
   // Load subjects & sessions
   useEffect(() => {
@@ -100,16 +97,27 @@ export default function PomodoroScreen() {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     if (!running) {
-      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
       return;
     }
     intervalRef.current = setInterval(() => {
       setSecondsLeft((prev) => {
-        if (prev <= 1) { tryFinishCycle(); return 0; }
+        if (prev <= 1) {
+          tryFinishCycle();
+          return 0;
+        }
         return prev - 1;
       });
     }, 1000);
-    return () => { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; } };
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
   }, [running]);
 
   const totalSecondsPlanned = useMemo(
@@ -119,7 +127,13 @@ export default function PomodoroScreen() {
 
   function tryFinishCycle() {
     Vibration.vibrate(500);
-    const entry: Session = { id: `${Date.now()}`, subjectCode, mode, seconds: totalSecondsPlanned, finishedAt: Date.now() };
+    const entry: Session = {
+      id: `${Date.now()}`,
+      subjectCode,
+      mode,
+      seconds: totalSecondsPlanned,
+      finishedAt: Date.now(),
+    };
     setSessions((prev) => [entry, ...prev].slice(0, 100));
     const nextMode = mode === "Focus" ? "Break" : "Focus";
     setMode(nextMode);
@@ -128,11 +142,23 @@ export default function PomodoroScreen() {
     Alert.alert("Time's up!", `${mode} session complete. Switch to ${nextMode}?`, [{ text: "OK" }]);
   }
 
-  function toggleRun() { setRunning((r) => !r); }
-  function resetTimer() { setRunning(false); setSecondsLeft((mode === "Focus" ? focusMin : breakMin) * 60); }
-  function switchMode() { setMode((m) => (m === "Focus" ? "Break" : "Focus")); setRunning(false); }
-  function adjustFocus(delta: number) { setFocusMin((m) => Math.max(1, Math.min(180, m + delta))); }
-  function adjustBreak(delta: number) { setBreakMin((m) => Math.max(1, Math.min(60, m + delta))); }
+  function toggleRun() {
+    setRunning((r) => !r);
+  }
+  function resetTimer() {
+    setRunning(false);
+    setSecondsLeft((mode === "Focus" ? focusMin : breakMin) * 60);
+  }
+  function switchMode() {
+    setMode((m) => (m === "Focus" ? "Break" : "Focus"));
+    setRunning(false);
+  }
+  function adjustFocus(delta: number) {
+    setFocusMin((m) => Math.max(1, Math.min(180, m + delta)));
+  }
+  function adjustBreak(delta: number) {
+    setBreakMin((m) => Math.max(1, Math.min(60, m + delta)));
+  }
 
   const subjectLabel = useMemo(() => {
     if (!subjectCode) return "No subject";
@@ -141,7 +167,8 @@ export default function PomodoroScreen() {
   }, [subjectCode, subjects]);
 
   const focusTodayBySubject = useMemo(() => {
-    const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
     const startMs = startOfDay.getTime();
     const map = new Map<string, number>();
     for (const s of sessions) {
@@ -150,7 +177,10 @@ export default function PomodoroScreen() {
       const key = s.subjectCode || "No subject";
       map.set(key, (map.get(key) || 0) + s.seconds);
     }
-    return Array.from(map.entries()).map(([key, seconds]) => ({ key, minutes: Math.round(seconds / 60) }));
+    return Array.from(map.entries()).map(([key, seconds]) => ({
+      key,
+      minutes: Math.round(seconds / 60),
+    }));
   }, [sessions]);
 
   function openTimeEdit() {
@@ -160,146 +190,153 @@ export default function PomodoroScreen() {
   }
   function saveTimeEdit() {
     const minutes = Math.max(1, Math.min(240, Number(timeInput.replace(/[^0-9]/g, "")) || 0));
-    if (mode === "Focus") setFocusMin(minutes); else setBreakMin(minutes);
+    if (mode === "Focus") setFocusMin(minutes);
+    else setBreakMin(minutes);
     setRunning(false);
     setSecondsLeft(minutes * 60);
     setEditTimeVisible(false);
   }
 
   return (
-    <SafeAreaView style={s.screen}>
-      {/* Header row with theme toggle */}
-      <View style={s.header}>
-        <Text style={s.title}>Pomodoro</Text>
-        <Pressable onPress={toggleTheme} style={{ paddingHorizontal: 6, paddingVertical: 4 }}>
-          <Ionicons name={theme.name === "dark" ? "sunny" : "moon"} size={20} color={theme.navText} />
-        </Pressable>
-      </View>
-      <Text style={s.sub}>Tap the timer to type a custom duration.</Text>
-
-      {/* Subject selector */}
-      <View style={s.subjectRow}>
-        <Text style={s.label}>Subject</Text>
-        <Pressable onPress={() => setSubjectModal(true)} style={s.subjectBtn}>
-          <Text style={s.subjectText}>{subjectLabel}</Text>
-        </Pressable>
-      </View>
-
-      {/* Timer card */}
-      <View style={s.timerCard}>
-        <Text style={[s.mode, { color: mode === "Focus" ? theme.success : theme.primary }]}>{mode}</Text>
-
-        <Pressable onPress={openTimeEdit}>
-          <Text style={s.time}>{formatMMSS(secondsLeft)}</Text>
-        </Pressable>
-
-        <View style={s.controlsRow}>
-          <Pressable onPress={switchMode} style={s.controlBtn}>
-            <Text style={s.controlText}>Switch</Text>
+    <SafeAreaView style={[s.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={0}
+      >
+        {/* Header row with theme toggle (no native header) */}
+        <View style={s.header}>
+          <Text style={s.title}>Pomodoro</Text>
+          <Pressable onPress={toggleTheme} style={{ paddingHorizontal: 6, paddingVertical: 4 }}>
+            <Ionicons name={theme.name === "dark" ? "sunny" : "moon"} size={20} color={theme.navText} />
           </Pressable>
-          <Pressable onPress={toggleRun} style={[s.controlBtn, { backgroundColor: theme.primary }]}>
-            <Text style={[s.primaryText, { color: theme.primaryText }]}>{running ? "Pause" : "Start"}</Text>
-          </Pressable>
-          <Pressable onPress={resetTimer} style={s.controlBtn}>
-            <Text style={s.controlText}>Reset</Text>
+        </View>
+        <Text style={s.sub}>Tap the timer to type a custom duration.</Text>
+
+        {/* Subject selector */}
+        <View style={s.subjectRow}>
+          <Text style={s.label}>Subject</Text>
+          <Pressable onPress={() => setSubjectModal(true)} style={s.subjectBtn}>
+            <Text style={s.subjectText}>{subjectLabel}</Text>
           </Pressable>
         </View>
 
-        {/* Durations */}
-        <View style={s.block}>
-          <Text style={s.blockTitle}>Durations (minutes)</Text>
-          <View style={s.adjustRow}>
-            <View style={s.adjustCol}>
-              <Text style={s.adjustLabel}>Focus</Text>
-              <View style={s.adjustBtns}>
-                <Pressable onPress={() => adjustFocus(-5)} style={s.adjustBtn}><Text style={s.adjustText}>-5</Text></Pressable>
-                <Text style={s.adjustValue}>{focusMin}</Text>
-                <Pressable onPress={() => adjustFocus(+5)} style={s.adjustBtn}><Text style={s.adjustText}>+5</Text></Pressable>
+        {/* Timer card */}
+        <View style={s.timerCard}>
+          <Text style={[s.mode, { color: mode === "Focus" ? theme.success : theme.primary }]}>{mode}</Text>
+
+          <Pressable onPress={openTimeEdit}>
+            <Text style={s.time}>{formatMMSS(secondsLeft)}</Text>
+          </Pressable>
+
+          <View style={s.controlsRow}>
+            <Pressable onPress={switchMode} style={s.controlBtn}>
+              <Text style={s.controlText}>Switch</Text>
+            </Pressable>
+            <Pressable onPress={toggleRun} style={[s.controlBtn, { backgroundColor: theme.primary }]}>
+              <Text style={[s.primaryText, { color: theme.primaryText }]}>{running ? "Pause" : "Start"}</Text>
+            </Pressable>
+            <Pressable onPress={resetTimer} style={s.controlBtn}>
+              <Text style={s.controlText}>Reset</Text>
+            </Pressable>
+          </View>
+
+          {/* Durations */}
+          <View style={s.block}>
+            <Text style={s.blockTitle}>Durations (minutes)</Text>
+            <View style={s.adjustRow}>
+              <View style={s.adjustCol}>
+                <Text style={s.adjustLabel}>Focus</Text>
+                <View style={s.adjustBtns}>
+                  <Pressable onPress={() => adjustFocus(-5)} style={s.adjustBtn}><Text style={s.adjustText}>-5</Text></Pressable>
+                  <Text style={s.adjustValue}>{focusMin}</Text>
+                  <Pressable onPress={() => adjustFocus(+5)} style={s.adjustBtn}><Text style={s.adjustText}>+5</Text></Pressable>
+                </View>
               </View>
-            </View>
-            <View style={s.adjustCol}>
-              <Text style={s.adjustLabel}>Break</Text>
-              <View style={s.adjustBtns}>
-                <Pressable onPress={() => adjustBreak(-1)} style={s.adjustBtn}><Text style={s.adjustText}>-1</Text></Pressable>
-                <Text style={s.adjustValue}>{breakMin}</Text>
-                <Pressable onPress={() => adjustBreak(+1)} style={s.adjustBtn}><Text style={s.adjustText}>+1</Text></Pressable>
+              <View style={s.adjustCol}>
+                <Text style={s.adjustLabel}>Break</Text>
+                <View style={s.adjustBtns}>
+                  <Pressable onPress={() => adjustBreak(-1)} style={s.adjustBtn}><Text style={s.adjustText}>-1</Text></Pressable>
+                  <Text style={s.adjustValue}>{breakMin}</Text>
+                  <Pressable onPress={() => adjustBreak(+1)} style={s.adjustBtn}><Text style={s.adjustText}>+1</Text></Pressable>
+                </View>
               </View>
             </View>
           </View>
         </View>
-      </View>
 
-      {/* Today summary */}
-      <View style={s.summary}>
-        <Text style={s.summaryTitle}>Today’s Focus (min)</Text>
-        {focusTodayBySubject.length === 0 ? (
-          <Text style={s.summaryEmpty}>No focus sessions yet.</Text>
-        ) : (
-          <FlatList
-            data={focusTodayBySubject}
-            keyExtractor={(i) => i.key}
-            renderItem={({ item }) => (
-              <View style={s.summaryRow}>
-                <Text style={s.summaryKey}>{item.key}</Text>
-                <Text style={s.summaryVal}>{item.minutes}</Text>
-              </View>
-            )}
-          />
-        )}
-      </View>
-
-      {/* Subject modal */}
-      <Modal visible={subjectModal} transparent animationType="slide" onRequestClose={() => setSubjectModal(false)}>
-        <View style={s.modalOverlay}>
-          <View style={s.modalCard}>
-            <Text style={s.modalTitle}>Choose subject</Text>
-            <Pressable style={s.subjectRowItem} onPress={() => { setSubjectCode(null); setSubjectModal(false); }}>
-              <Text style={s.subjectItemText}>No subject</Text>
-            </Pressable>
+        {/* Today summary */}
+        <View style={s.summary}>
+          <Text style={s.summaryTitle}>Today’s Focus (min)</Text>
+          {focusTodayBySubject.length === 0 ? (
+            <Text style={s.summaryEmpty}>No focus sessions yet.</Text>
+          ) : (
             <FlatList
-              data={subjects}
-              keyExtractor={(sub) => sub.code}
+              data={focusTodayBySubject}
+              keyExtractor={(i) => i.key}
               renderItem={({ item }) => (
-                <Pressable style={s.subjectRowItem} onPress={() => { setSubjectCode(item.code); setSubjectModal(false); }}>
-                  <Text style={s.subjectItemText}>{item.code} • {item.name}</Text>
-                </Pressable>
+                <View style={s.summaryRow}>
+                  <Text style={s.summaryKey}>{item.key}</Text>
+                  <Text style={s.summaryVal}>{item.minutes}</Text>
+                </View>
               )}
             />
-            <Pressable onPress={() => setSubjectModal(false)} style={[s.controlBtn, { alignSelf: "flex-end", marginTop: 8 }]}>
-              <Text style={s.controlText}>Close</Text>
-            </Pressable>
-          </View>
+          )}
         </View>
-      </Modal>
 
-      {/* Time edit modal */}
-      <Modal visible={editTimeVisible} transparent animationType="fade" onRequestClose={() => setEditTimeVisible(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={s.editOverlay}>
-          <View style={s.editCard}>
-            <Text style={s.editTitle}>Set {mode} minutes</Text>
-            <TextInput
-              autoFocus
-              keyboardType="numeric"
-              inputMode="numeric"
-              value={timeInput}
-              onChangeText={(t) => setTimeInput(t.replace(/[^0-9]/g, ""))}
-              placeholder="e.g. 25"
-              placeholderTextColor={theme.textMuted}
-              style={s.editInput}
-              maxLength={3}
-            />
-            <View style={s.editRow}>
-              <Pressable onPress={() => setEditTimeVisible(false)} style={s.controlBtn}>
-                <Text style={s.controlText}>Cancel</Text>
+        {/* Subject modal */}
+        <Modal visible={subjectModal} transparent animationType="slide" onRequestClose={() => setSubjectModal(false)}>
+          <View style={s.modalOverlay}>
+            <View style={s.modalCard}>
+              <Text style={s.modalTitle}>Choose subject</Text>
+              <Pressable style={s.subjectRowItem} onPress={() => { setSubjectCode(null); setSubjectModal(false); }}>
+                <Text style={s.subjectItemText}>No subject</Text>
               </Pressable>
-              <Pressable onPress={saveTimeEdit} style={[s.controlBtn, { backgroundColor: theme.primary }]}>
-                <Text style={[s.primaryText, { color: theme.primaryText }]}>Save</Text>
+              <FlatList
+                data={subjects}
+                keyExtractor={(sub) => sub.code}
+                renderItem={({ item }) => (
+                  <Pressable style={s.subjectRowItem} onPress={() => { setSubjectCode(item.code); setSubjectModal(false); }}>
+                    <Text style={s.subjectItemText}>{item.code} • {item.name}</Text>
+                  </Pressable>
+                )}
+              />
+              <Pressable onPress={() => setSubjectModal(false)} style={[s.controlBtn, { alignSelf: "flex-end", marginTop: 8 }]}>
+                <Text style={s.controlText}>Close</Text>
               </Pressable>
             </View>
-            <Text style={s.editHint}>Timer will reset to the new duration and pause.</Text>
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        </Modal>
+
+        {/* Time edit modal */}
+        <Modal visible={editTimeVisible} transparent animationType="fade" onRequestClose={() => setEditTimeVisible(false)}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={s.editOverlay}>
+            <View style={s.editCard}>
+              <Text style={s.editTitle}>Set {mode} minutes</Text>
+              <TextInput
+                autoFocus
+                keyboardType="numeric"
+                inputMode="numeric"
+                value={timeInput}
+                onChangeText={(t) => setTimeInput(t.replace(/[^0-9]/g, ""))}
+                placeholder="e.g. 25"
+                placeholderTextColor={theme.textMuted}
+                style={s.editInput}
+                maxLength={3}
+              />
+              <View style={s.editRow}>
+                <Pressable onPress={() => setEditTimeVisible(false)} style={s.controlBtn}>
+                  <Text style={s.controlText}>Cancel</Text>
+                </Pressable>
+                <Pressable onPress={saveTimeEdit} style={[s.controlBtn, { backgroundColor: theme.primary }]}>
+                  <Text style={[s.primaryText, { color: theme.primaryText }]}>Save</Text>
+                </Pressable>
+              </View>
+              <Text style={s.editHint}>Timer will reset to the new duration and pause.</Text>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
