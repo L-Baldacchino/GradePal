@@ -1,387 +1,427 @@
 // app/(tabs)/pomodoro.tsx
+import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useFocusEffect } from "expo-router";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
+  AppState,
+  AppStateStatus,
   FlatList,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  Vibration,
   View,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../theme/ThemeProvider";
 
 type Subject = { code: string; name: string };
+type SessionEntry = { id: string; ts: string; subject: string | null; minutes: number };
 
-const SUBJECTS_KEY = "subjects:v1";
-const SESSIONS_KEY = "pomodoro:sessions:v1";
+const SUBJECTS_KEY = "subjects-list:v1";
+const SELECTED_SUBJECT_KEY = "pomodoro:selectedSubject";
+const LOG_KEY = "pomodoro:log:v1";
 
-type Session = {
-  id: string;
-  subjectCode?: string | null;
-  mode: "Focus" | "Break";
-  seconds: number;
-  finishedAt: number;
+const numOnly = (s: string) => s.replace(/[^0-9]/g, "");
+const clampToMinute = (s: string) => {
+  const n = parseInt(s || "0", 10);
+  return isNaN(n) || n <= 0 ? 1 : n;
 };
-
-function formatMMSS(totalSeconds: number) {
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
+const isoLocalDate = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 export default function PomodoroScreen() {
   const { theme } = useTheme();
   const s = makeStyles(theme);
   const insets = useSafeAreaInsets();
 
-  // Durations
-  const [focusMin, setFocusMin] = useState(25);
-  const [breakMin, setBreakMin] = useState(5);
-
-  // State
-  const [mode, setMode] = useState<"Focus" | "Break">("Focus");
-  const [secondsLeft, setSecondsLeft] = useState(focusMin * 60);
-  const [running, setRunning] = useState(false);
-
-  // Subjects
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [subjectModal, setSubjectModal] = useState(false);
-  const [subjectCode, setSubjectCode] = useState<string | null>(null);
+  const [selectedCode, setSelectedCode] = useState<string | null>(null);
+  const [studyMin, setStudyMin] = useState("25");
+  const [breakMin, setBreakMin] = useState("5");
+  const [remainingSec, setRemainingSec] = useState(25 * 60);
+  const [running, setRunning] = useState(false);
+  const [onBreak, setOnBreak] = useState(false);
+  const [log, setLog] = useState<SessionEntry[]>([]);
 
-  // Sessions
-  const [sessions, setSessions] = useState<Session[]>([]);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const justLoggedRef = useRef<number>(0);
 
-  // Time edit modal
-  const [editTimeVisible, setEditTimeVisible] = useState(false);
-  const [timeInput, setTimeInput] = useState("");
+  const loadSubjects = async () => {
+    try {
+      const raw = await AsyncStorage.getItem(SUBJECTS_KEY);
+      const list: Subject[] = raw ? JSON.parse(raw) : [];
+      setSubjects(list);
 
-  // Load subjects & sessions
+      const savedSel = await AsyncStorage.getItem(SELECTED_SUBJECT_KEY);
+      const code = savedSel || null;
+      if (code && list.some((s) => s.code === code)) {
+        setSelectedCode(code);
+      } else {
+        setSelectedCode(list[0]?.code ?? null);
+      }
+    } catch {}
+  };
+
+  const loadLog = async () => {
+    try {
+      const raw = await AsyncStorage.getItem(LOG_KEY);
+      setLog(raw ? JSON.parse(raw) : []);
+    } catch {
+      setLog([]);
+    }
+  };
+
+  const saveLog = async (entries: SessionEntry[]) => {
+    setLog(entries);
+    await AsyncStorage.setItem(LOG_KEY, JSON.stringify(entries));
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      loadSubjects();
+      loadLog();
+    }, [])
+  );
+
   useEffect(() => {
-    (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(SUBJECTS_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw) as Subject[];
-          if (Array.isArray(parsed)) setSubjects(parsed);
-        }
-      } catch {}
-    })();
-    (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(SESSIONS_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw) as Session[];
-          if (Array.isArray(parsed)) setSessions(parsed);
-        }
-      } catch {}
-    })();
+    const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
+      if (state === "active") {
+        loadSubjects();
+        loadLog();
+      }
+    });
+    return () => sub.remove();
   }, []);
 
   useEffect(() => {
-    AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions)).catch(() => {});
-  }, [sessions]);
+    if (selectedCode) AsyncStorage.setItem(SELECTED_SUBJECT_KEY, selectedCode).catch(() => {});
+  }, [selectedCode]);
 
-  useEffect(() => {
+  const getStudyMinutes = () => clampToMinute(studyMin);
+  const getBreakMinutes = () => clampToMinute(breakMin);
+
+  const resetPhase = (isBreak: boolean) => {
+    setOnBreak(isBreak);
+    const mins = isBreak ? getBreakMinutes() : getStudyMinutes();
+    setRemainingSec(mins * 60);
+  };
+
+  const logFocusCompletion = async (minutes: number) => {
+    const nowMs = Date.now();
+    if (nowMs - justLoggedRef.current < 750) return;
+    justLoggedRef.current = nowMs;
+    const entry: SessionEntry = {
+      id: String(nowMs),
+      ts: new Date(nowMs).toISOString(),
+      subject: selectedCode,
+      minutes,
+    };
+    const next = [entry, ...log].slice(0, 200);
+    await saveLog(next);
+  };
+
+  const start = () => {
     if (running) return;
-    setSecondsLeft((mode === "Focus" ? focusMin : breakMin) * 60);
-  }, [focusMin, breakMin, mode, running]);
-
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  useEffect(() => {
-    if (!running) {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      return;
-    }
-    intervalRef.current = setInterval(() => {
-      setSecondsLeft((prev) => {
+    if (remainingSec <= 0) resetPhase(false);
+    setRunning(true);
+    timerRef.current = setInterval(() => {
+      setRemainingSec((prev) => {
         if (prev <= 1) {
-          tryFinishCycle();
-          return 0;
+          const wasFocus = !onBreak;
+
+          if (wasFocus) {
+            // Pause, alert, and only start break if user confirms
+            stop();
+            logFocusCompletion(getStudyMinutes());
+            Alert.alert(
+              "Nice work!",
+              "Focus session complete. Ready for your break?",
+              [
+                {
+                  text: "Start break",
+                  onPress: () => {
+                    setOnBreak(true);
+                    setRemainingSec(getBreakMinutes() * 60);
+                    start();
+                  },
+                },
+                {
+                  text: "Skip break",
+                  style: "cancel",
+                  onPress: () => {
+                    setOnBreak(false);
+                    setRemainingSec(getStudyMinutes() * 60);
+                  },
+                },
+              ]
+            );
+            return 0;
+          }
+
+          // Finished a break → auto-start next focus round
+          setOnBreak(false);
+          return getStudyMinutes() * 60;
         }
         return prev - 1;
       });
     }, 1000);
+  };
+
+  const stop = () => {
+    setRunning(false);
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = null;
+  };
+
+  const reset = () => {
+    stop();
+    resetPhase(false);
+  };
+
+  useEffect(() => {
+    if (!running) resetPhase(onBreak);
+  }, [studyMin, breakMin]);
+
+  useEffect(() => {
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
+      if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [running]);
+  }, []);
 
-  const totalSecondsPlanned = useMemo(
-    () => (mode === "Focus" ? focusMin * 60 : breakMin * 60),
-    [mode, focusMin, breakMin]
-  );
+  const mins = Math.floor(remainingSec / 60).toString().padStart(2, "0");
+  const secs = Math.floor(remainingSec % 60).toString().padStart(2, "0");
 
-  function tryFinishCycle() {
-    Vibration.vibrate(500);
-    const entry: Session = {
-      id: `${Date.now()}`,
-      subjectCode,
-      mode,
-      seconds: totalSecondsPlanned,
-      finishedAt: Date.now(),
-    };
-    setSessions((prev) => [entry, ...prev].slice(0, 100));
-    const nextMode = mode === "Focus" ? "Break" : "Focus";
-    setMode(nextMode);
-    setRunning(false);
-    setSecondsLeft((nextMode === "Focus" ? focusMin : breakMin) * 60);
-    Alert.alert("Time's up!", `${mode} session complete. Switch to ${nextMode}?`, [{ text: "OK" }]);
-  }
+  const todayKey = isoLocalDate(new Date());
+  const todayEntries = log.filter((e) => e.ts.slice(0, 10) === todayKey);
+  const todayTotal = todayEntries.reduce((a, e) => a + (e.minutes || 0), 0);
 
-  function toggleRun() {
-    setRunning((r) => !r);
-  }
-  function resetTimer() {
-    setRunning(false);
-    setSecondsLeft((mode === "Focus" ? focusMin : breakMin) * 60);
-  }
-  function switchMode() {
-    setMode((m) => (m === "Focus" ? "Break" : "Focus"));
-    setRunning(false);
-  }
-  function adjustFocus(delta: number) {
-    setFocusMin((m) => Math.max(1, Math.min(180, m + delta)));
-  }
-  function adjustBreak(delta: number) {
-    setBreakMin((m) => Math.max(1, Math.min(60, m + delta)));
-  }
+  const rollup = (entries: SessionEntry[]) =>
+    entries.reduce<Record<string, number>>((acc, e) => {
+      const key = e.subject ?? "—";
+      acc[key] = (acc[key] || 0) + (e.minutes || 0);
+      return acc;
+    }, {});
 
-  const subjectLabel = useMemo(() => {
-    if (!subjectCode) return "No subject";
-    const found = subjects.find((s) => s.code === subjectCode);
-    return found ? `${found.code} • ${found.name}` : subjectCode;
-  }, [subjectCode, subjects]);
+  const todayBySubject = rollup(todayEntries);
+  const allTimeBySubject = rollup(log);
 
-  const focusTodayBySubject = useMemo(() => {
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const startMs = startOfDay.getTime();
-    const map = new Map<string, number>();
-    for (const s of sessions) {
-      if (s.mode !== "Focus") continue;
-      if (s.finishedAt < startMs) continue;
-      const key = s.subjectCode || "No subject";
-      map.set(key, (map.get(key) || 0) + s.seconds);
-    }
-    return Array.from(map.entries()).map(([key, seconds]) => ({
-      key,
-      minutes: Math.round(seconds / 60),
-    }));
-  }, [sessions]);
-
-  function openTimeEdit() {
-    const currentMin = mode === "Focus" ? focusMin : breakMin;
-    setTimeInput(String(currentMin));
-    setEditTimeVisible(true);
-  }
-  function saveTimeEdit() {
-    const minutes = Math.max(1, Math.min(240, Number(timeInput.replace(/[^0-9]/g, "")) || 0));
-    if (mode === "Focus") setFocusMin(minutes);
-    else setBreakMin(minutes);
-    setRunning(false);
-    setSecondsLeft(minutes * 60);
-    setEditTimeVisible(false);
-  }
+  // NEW: overall total across all days
+  const overallTotal = log.reduce((sum, e) => sum + (e.minutes || 0), 0);
 
   return (
-    // NOTE: no top padding — native header sits above the scene already
-    <SafeAreaView style={[s.screen, { paddingBottom: insets.bottom }]}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={0}
-      >
-        {/* Intro line to replace the old in-screen header */}
-        <Text style={s.sub}>Tap the timer to type a custom duration.</Text>
-
-        {/* Subject selector */}
-        <View style={s.subjectRow}>
-          <Text style={s.label}>Subject</Text>
-          <Pressable onPress={() => setSubjectModal(true)} style={s.subjectBtn}>
-            <Text style={s.subjectText}>{subjectLabel}</Text>
-          </Pressable>
-        </View>
-
-        {/* Timer card */}
-        <View style={s.timerCard}>
-          <Text style={[s.mode, { color: mode === "Focus" ? theme.success : theme.primary }]}>{mode}</Text>
-
-          <Pressable onPress={openTimeEdit}>
-            <Text style={s.time}>{formatMMSS(secondsLeft)}</Text>
-          </Pressable>
-
-          <View style={s.controlsRow}>
-            <Pressable onPress={switchMode} style={s.controlBtn}>
-              <Text style={s.controlText}>Switch</Text>
-            </Pressable>
-            <Pressable onPress={toggleRun} style={[s.controlBtn, { backgroundColor: theme.primary }]}>
-              <Text style={[s.primaryText, { color: theme.primaryText }]}>{running ? "Pause" : "Start"}</Text>
-            </Pressable>
-            <Pressable onPress={resetTimer} style={s.controlBtn}>
-              <Text style={s.controlText}>Reset</Text>
-            </Pressable>
+    <ScrollView style={s.screen} contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}>
+      {/* Subject Picker */}
+      <View style={s.card}>
+        <Text style={s.label}>Subject</Text>
+        {subjects.length === 0 ? (
+          <Text style={s.muted}>No subjects yet. Add one on the Home tab.</Text>
+        ) : (
+          <View style={s.chipsRow}>
+            {subjects.map((sub) => {
+              const active = sub.code === selectedCode;
+              return (
+                <Pressable
+                  key={sub.code}
+                  onPress={() => setSelectedCode(sub.code)}
+                  style={[
+                    s.chip,
+                    {
+                      backgroundColor: active ? theme.primary : theme.card,
+                      borderColor: active ? theme.primary : theme.border,
+                    },
+                  ]}
+                >
+                  <Text style={[s.chipText, { color: active ? theme.primaryText : theme.text }]}>{sub.code}</Text>
+                </Pressable>
+              );
+            })}
           </View>
+        )}
+      </View>
 
-          {/* Durations */}
-          <View style={s.block}>
-            <Text style={s.blockTitle}>Durations (minutes)</Text>
-            <View style={s.adjustRow}>
-              <View style={s.adjustCol}>
-                <Text style={s.adjustLabel}>Focus</Text>
-                <View style={s.adjustBtns}>
-                  <Pressable onPress={() => adjustFocus(-5)} style={s.adjustBtn}><Text style={s.adjustText}>-5</Text></Pressable>
-                  <Text style={s.adjustValue}>{focusMin}</Text>
-                  <Pressable onPress={() => adjustFocus(+5)} style={s.adjustBtn}><Text style={s.adjustText}>+5</Text></Pressable>
-                </View>
-              </View>
-              <View style={s.adjustCol}>
-                <Text style={s.adjustLabel}>Break</Text>
-                <View style={s.adjustBtns}>
-                  <Pressable onPress={() => adjustBreak(-1)} style={s.adjustBtn}><Text style={s.adjustText}>-1</Text></Pressable>
-                  <Text style={s.adjustValue}>{breakMin}</Text>
-                  <Pressable onPress={() => adjustBreak(+1)} style={s.adjustBtn}><Text style={s.adjustText}>+1</Text></Pressable>
-                </View>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Today summary */}
-        <View style={s.summary}>
-          <Text style={s.summaryTitle}>Today’s Focus (min)</Text>
-          {focusTodayBySubject.length === 0 ? (
-            <Text style={s.summaryEmpty}>No focus sessions yet.</Text>
-          ) : (
-            <FlatList
-              data={focusTodayBySubject}
-              keyExtractor={(i) => i.key}
-              renderItem={({ item }) => (
-                <View style={s.summaryRow}>
-                  <Text style={s.summaryKey}>{item.key}</Text>
-                  <Text style={s.summaryVal}>{item.minutes}</Text>
-                </View>
-              )}
+      {/* Durations */}
+      <View style={s.card}>
+        <Text style={s.label}>Durations (minutes)</Text>
+        <View style={s.row}>
+          <View style={s.inputGroup}>
+            <Text style={s.inputLabel}>Study</Text>
+            <TextInput
+              value={studyMin}
+              onChangeText={(t) => setStudyMin(numOnly(t))}
+              onBlur={() => setStudyMin((v) => (v.trim() === "" ? "1" : v))}
+              keyboardType="number-pad"
+              style={s.input}
+              maxLength={3}
             />
-          )}
-        </View>
-
-        {/* Subject modal */}
-        <Modal visible={subjectModal} transparent animationType="slide" onRequestClose={() => setSubjectModal(false)}>
-          <View style={s.modalOverlay}>
-            <View style={s.modalCard}>
-              <Text style={s.modalTitle}>Choose subject</Text>
-              <Pressable style={s.subjectRowItem} onPress={() => { setSubjectCode(null); setSubjectModal(false); }}>
-                <Text style={s.subjectItemText}>No subject</Text>
-              </Pressable>
-              <FlatList
-                data={subjects}
-                keyExtractor={(sub) => sub.code}
-                renderItem={({ item }) => (
-                  <Pressable style={s.subjectRowItem} onPress={() => { setSubjectCode(item.code); setSubjectModal(false); }}>
-                    <Text style={s.subjectItemText}>{item.code} • {item.name}</Text>
-                  </Pressable>
-                )}
-              />
-              <Pressable onPress={() => setSubjectModal(false)} style={[s.controlBtn, { alignSelf: "flex-end", marginTop: 8 }]}>
-                <Text style={s.controlText}>Close</Text>
-              </Pressable>
-            </View>
           </View>
-        </Modal>
+          <View style={s.inputGroup}>
+            <Text style={s.inputLabel}>Break</Text>
+            <TextInput
+              value={breakMin}
+              onChangeText={(t) => setBreakMin(numOnly(t))}
+              onBlur={() => setBreakMin((v) => (v.trim() === "" ? "1" : v))}
+              keyboardType="number-pad"
+              style={s.input}
+              maxLength={3}
+            />
+          </View>
+        </View>
+      </View>
 
-        {/* Time edit modal */}
-        <Modal visible={editTimeVisible} transparent animationType="fade" onRequestClose={() => setEditTimeVisible(false)}>
-          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={s.editOverlay}>
-            <View style={s.editCard}>
-              <Text style={s.editTitle}>Set {mode} minutes</Text>
-              <TextInput
-                autoFocus
-                keyboardType="numeric"
-                inputMode="numeric"
-                value={timeInput}
-                onChangeText={(t) => setTimeInput(t.replace(/[^0-9]/g, ""))}
-                placeholder="e.g. 25"
-                placeholderTextColor={theme.textMuted}
-                style={s.editInput}
-                maxLength={3}
-              />
-              <View style={s.editRow}>
-                <Pressable onPress={() => setEditTimeVisible(false)} style={s.controlBtn}>
-                  <Text style={s.controlText}>Cancel</Text>
-                </Pressable>
-                <Pressable onPress={saveTimeEdit} style={[s.controlBtn, { backgroundColor: theme.primary }]}>
-                  <Text style={[s.primaryText, { color: theme.primaryText }]}>Save</Text>
-                </Pressable>
+      {/* Timer */}
+      <View style={s.timerCard}>
+        <Text style={s.phase}>{onBreak ? "Break" : "Focus"}</Text>
+        <Text style={s.timeDisplay}>
+          {mins}:{secs}
+        </Text>
+
+        <View style={s.controls}>
+          {!running ? (
+            <Pressable onPress={start} style={[s.ctrlBtn, { backgroundColor: theme.primary }]}>
+              <Ionicons name="play" size={18} color={theme.primaryText} />
+              <Text style={[s.ctrlText, { color: theme.primaryText }]}>Start</Text>
+            </Pressable>
+          ) : (
+            <Pressable onPress={stop} style={[s.ctrlBtn, { backgroundColor: theme.border }]}>
+              <Ionicons name="pause" size={18} color={theme.text} />
+              <Text style={[s.ctrlText, { color: theme.text }]}>Pause</Text>
+            </Pressable>
+          )}
+          <Pressable onPress={reset} style={[s.ctrlBtn, { backgroundColor: "#E25563" }]}>
+            <Ionicons name="refresh" size={18} color="#fff" />
+            <Text style={[s.ctrlText, { color: "#fff" }]}>Reset</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Today summary + Recent log */}
+      <View style={s.card}>
+        <Text style={s.title}>Today</Text>
+        <Text style={s.todayText}>
+          Focused <Text style={{ fontWeight: "800", color: theme.text }}>{todayTotal}</Text> min total
+        </Text>
+
+        {Object.keys(todayBySubject).length > 0 && (
+          <View style={{ marginTop: 6 }}>
+            {Object.entries(todayBySubject).map(([sub, mins]) => (
+              <View key={`t-${sub}`} style={s.logRow}>
+                <Text style={s.logLeft}>{sub}</Text>
+                <Text style={s.logRight}>{mins}m</Text>
               </View>
-              <Text style={s.editHint}>Timer will reset to the new duration and pause.</Text>
+            ))}
+          </View>
+        )}
+
+        <View style={s.divider} />
+
+        <Text style={s.title}>Recent sessions</Text>
+        {log.length === 0 ? (
+          <Text style={s.muted}>No focus sessions yet.</Text>
+        ) : (
+          <FlatList
+            data={log.slice(0, 3)} // show only the last 3
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => {
+              const d = new Date(item.ts);
+              const clock = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+              const dateStr = item.ts.slice(0, 10);
+              return (
+                <View style={s.logRow}>
+                  <Text style={s.logLeft}>
+                    {dateStr} • {clock}
+                  </Text>
+                  <Text style={s.logRight}>
+                    {item.subject ?? "—"} · {item.minutes}m
+                  </Text>
+                </View>
+              );
+            }}
+          />
+        )}
+      </View>
+
+      {/* NEW: Overall total */}
+      <View style={s.card}>
+        <Text style={s.title}>Overall</Text>
+        <Text style={s.todayText}>
+          Total focus time across all days:{" "}
+          <Text style={{ fontWeight: "800", color: theme.text }}>{overallTotal}</Text> min
+        </Text>
+      </View>
+
+      {/* All-time by subject */}
+      <View style={s.card}>
+        <Text style={s.title}>All-time by subject</Text>
+        {Object.keys(allTimeBySubject).length === 0 ? (
+          <Text style={s.muted}>No data yet.</Text>
+        ) : (
+          Object.entries(allTimeBySubject).map(([sub, mins]) => (
+            <View key={`a-${sub}`} style={s.logRow}>
+              <Text style={s.logLeft}>{sub}</Text>
+              <Text style={s.logRight}>{mins}m</Text>
             </View>
-          </KeyboardAvoidingView>
-        </Modal>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          ))
+        )}
+      </View>
+    </ScrollView>
   );
 }
 
-const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
+const makeStyles = (t: any) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: t.bg },
-
-    sub: { color: t.textMuted, paddingHorizontal: 16, paddingTop: 10 },
-
-    subjectRow: { paddingHorizontal: 16, paddingVertical: 12, borderBottomColor: t.border, borderBottomWidth: 1 },
-    label: { color: t.textMuted, fontSize: 12, marginBottom: 6 },
-    subjectBtn: { backgroundColor: t.card, borderColor: t.border, borderWidth: 1, borderRadius: 12, padding: 12 },
-    subjectText: { color: t.text },
-
-    timerCard: { margin: 16, borderRadius: 16, backgroundColor: t.card, borderColor: t.border, borderWidth: 1, padding: 16 },
-    mode: { fontSize: 14, fontWeight: "700", letterSpacing: 0.5, marginBottom: 8 },
-    time: { color: t.text, fontSize: 56, fontWeight: "800", letterSpacing: 2, textAlign: "center", marginVertical: 8 },
-
-    controlsRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", columnGap: 12, marginTop: 8 },
-    controlBtn: { backgroundColor: t.border, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14 },
-    controlText: { color: t.text, fontWeight: "600" },
-    primaryText: { fontWeight: "800" },
-
-    block: { marginTop: 16 },
-    blockTitle: { color: t.text, fontWeight: "700", marginBottom: 8 },
-    adjustRow: { flexDirection: "row", columnGap: 12 },
-    adjustCol: { flex: 1, backgroundColor: t.card, borderColor: t.border, borderWidth: 1, borderRadius: 12, padding: 12 },
-    adjustLabel: { color: t.textMuted, marginBottom: 8 },
-    adjustBtns: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-    adjustBtn: { backgroundColor: t.border, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
-    adjustText: { color: t.text, fontWeight: "700" },
-    adjustValue: { color: t.text, fontSize: 18, fontWeight: "800" },
-
-    summary: { marginHorizontal: 16, marginBottom: 16, backgroundColor: t.card, borderColor: t.border, borderWidth: 1, borderRadius: 14, padding: 12 },
-    summaryTitle: { color: t.text, fontWeight: "700", marginBottom: 8 },
-    summaryEmpty: { color: t.textMuted },
-    summaryRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 },
-    summaryKey: { color: t.text },
-    summaryVal: { color: t.text, fontWeight: "700" },
-
-    modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "flex-end" },
-    modalCard: { width: "100%", maxHeight: "70%", backgroundColor: t.bg, borderTopColor: t.border, borderTopWidth: 1, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 16 },
-    modalTitle: { color: t.text, fontSize: 18, fontWeight: "700", marginBottom: 10 },
-    subjectRowItem: { paddingVertical: 10, borderBottomColor: t.border, borderBottomWidth: 1 },
-    subjectItemText: { color: t.text },
-
-    editOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center", paddingHorizontal: 16 },
-    editCard: { width: "100%", backgroundColor: t.bg, borderColor: t.border, borderWidth: 1, borderRadius: 16, padding: 16 },
-    editTitle: { color: t.text, fontSize: 18, fontWeight: "800", marginBottom: 10 },
-    editInput: { color: t.text, borderColor: t.border, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 18, textAlign: "center", backgroundColor: t.card },
-    editRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 12 },
-    editHint: { color: t.textMuted, marginTop: 8, fontSize: 12 },
+    card: {
+      backgroundColor: t.card,
+      borderColor: t.border,
+      borderWidth: 1,
+      borderRadius: 16,
+      padding: 14,
+      marginHorizontal: 16,
+      marginBottom: 12,
+    },
+    label: { color: t.text, fontSize: 12, marginBottom: 8, opacity: 0.8 },
+    muted: { color: t.textMuted },
+    chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    chip: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 14, borderWidth: 1 },
+    chipText: { fontSize: 13, fontWeight: "700" },
+    row: { flexDirection: "row", gap: 12 },
+    inputGroup: { flex: 1 },
+    inputLabel: { color: t.textMuted, fontSize: 12, marginBottom: 6 },
+    input: {
+      color: t.text,
+      borderColor: t.border,
+      backgroundColor: t.card,
+      borderWidth: 1,
+      borderRadius: 14,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      fontSize: 16,
+      textAlign: "center",
+    },
+    timerCard: {
+      backgroundColor: t.card,
+      borderColor: t.border,
+      borderWidth: 1,
+      borderRadius: 20,
+      paddingVertical: 24,
+      alignItems: "center",
+      gap: 8,
+      marginHorizontal: 16,
+      marginBottom: 12,
+    },
+    phase: { color: t.textMuted, fontSize: 13, marginBottom: 4 },
+    timeDisplay: { color: t.text, fontSize: 44, fontWeight: "800", letterSpacing: 1 },
+    controls: { flexDirection: "row", gap: 10, marginTop: 12 },
+    ctrlBtn: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 10, paddingHorizontal: 16, borderRadius: 14 },
+    ctrlText: { fontWeight: "700", fontSize: 14 },
+    title: { color: t.text, fontSize: 16, fontWeight: "700", marginBottom: 6 },
+    todayText: { color: t.text, fontSize: 14, marginBottom: 8 },
+    divider: { height: 1, backgroundColor: t.border, marginVertical: 8, opacity: 0.8 },
+    logRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 },
+    logLeft: { color: t.textMuted, fontSize: 12 },
+    logRight: { color: t.text, fontSize: 12, fontWeight: "600" },
   });
