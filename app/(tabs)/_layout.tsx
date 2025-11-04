@@ -1,35 +1,55 @@
-import { Tabs } from 'expo-router';
-import React from 'react';
+// app/(tabs)/_layout.tsx
+import { Ionicons } from "@expo/vector-icons";
+import { Tabs } from "expo-router";
+import { useTheme } from "../theme/ThemeProvider";
 
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
+export default function TabsLayout() {
+  const { theme } = useTheme();
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
+        // Tab bar theming
+        tabBarStyle: {
+          backgroundColor: theme.navBg,
+          borderTopColor: theme.border,
+        },
+        tabBarActiveTintColor: theme.primary,
+        tabBarInactiveTintColor: theme.textMuted,
+        tabBarLabelStyle: { fontWeight: "600" },
+
+        // Page background behind each screen
+        sceneContainerStyle: { backgroundColor: theme.bg },
+
+        // Default header styling for tabs that keep a header
+        headerStyle: { backgroundColor: theme.navBg },
+        headerTintColor: theme.navText,
+        headerTitleStyle: { color: theme.navText },
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          title: "Home",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home" color={color} size={size} />
+          ),
         }}
       />
+
       <Tabs.Screen
-        name="explore"
+        name="pomodoro"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: "Pomodoro",
+          // Hide the native header (removes the white bar)
+          headerShown: false,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="timer" color={color} size={size} />
+          ),
         }}
       />
+
+      {/* add other tabs here... */}
     </Tabs>
   );
 }

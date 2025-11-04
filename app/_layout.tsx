@@ -1,24 +1,30 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
+// app/_layout.tsx
+import { Stack } from "expo-router";
+import { ThemeProvider, useTheme } from "./theme/ThemeProvider";
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
+function ThemedStack() {
+  const { theme } = useTheme();
 
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
+  // Apply themed headers
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: true,
+        headerStyle: { backgroundColor: theme.navBg },
+        headerTintColor: theme.navText,
+        headerTitleStyle: { color: theme.navText },
+      }}
+    >
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="grade-planner/[subject]" options={{ title: "Grade Planner" }} />
+    </Stack>
+  );
+}
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-      </Stack>
-      <StatusBar style="auto" />
+    <ThemeProvider>
+      <ThemedStack />
     </ThemeProvider>
   );
 }
