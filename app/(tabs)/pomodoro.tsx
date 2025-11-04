@@ -7,7 +7,6 @@ import {
   Alert,
   AppState,
   AppStateStatus,
-  FlatList,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -62,6 +61,7 @@ export default function PomodoroScreen() {
         setSelectedCode(code);
       } else {
         setSelectedCode(list[0]?.code ?? null);
+        if (!list[0]) await AsyncStorage.removeItem(SELECTED_SUBJECT_KEY);
       }
     } catch {}
   };
@@ -134,35 +134,31 @@ export default function PomodoroScreen() {
           const wasFocus = !onBreak;
 
           if (wasFocus) {
-            // Pause, alert, and only start break if user confirms
+            // Pause at 0, alert, and only start break if user confirms
             stop();
             logFocusCompletion(getStudyMinutes());
-            Alert.alert(
-              "Nice work!",
-              "Focus session complete. Ready for your break?",
-              [
-                {
-                  text: "Start break",
-                  onPress: () => {
-                    setOnBreak(true);
-                    setRemainingSec(getBreakMinutes() * 60);
-                    start();
-                  },
+            Alert.alert("Nice work!", "Focus session complete. Ready for your break?", [
+              {
+                text: "Start break",
+                onPress: () => {
+                  setOnBreak(true);
+                  setRemainingSec(getBreakMinutes() * 60);
+                  start();
                 },
-                {
-                  text: "Skip break",
-                  style: "cancel",
-                  onPress: () => {
-                    setOnBreak(false);
-                    setRemainingSec(getStudyMinutes() * 60);
-                  },
+              },
+              {
+                text: "Skip break",
+                style: "cancel",
+                onPress: () => {
+                  setOnBreak(false);
+                  setRemainingSec(getStudyMinutes() * 60);
                 },
-              ]
-            );
+              },
+            ]);
             return 0;
           }
 
-          // Finished a break → auto-start next focus round
+          // finished a break → auto start next focus round
           setOnBreak(false);
           return getStudyMinutes() * 60;
         }
@@ -205,12 +201,12 @@ export default function PomodoroScreen() {
       acc[key] = (acc[key] || 0) + (e.minutes || 0);
       return acc;
     }, {});
-
   const todayBySubject = rollup(todayEntries);
   const allTimeBySubject = rollup(log);
 
-  // NEW: overall total across all days
   const overallTotal = log.reduce((sum, e) => sum + (e.minutes || 0), 0);
+
+  const recent3 = log.slice(0, 3);
 
   return (
     <ScrollView style={s.screen} contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}>
@@ -229,10 +225,7 @@ export default function PomodoroScreen() {
                   onPress={() => setSelectedCode(sub.code)}
                   style={[
                     s.chip,
-                    {
-                      backgroundColor: active ? theme.primary : theme.card,
-                      borderColor: active ? theme.primary : theme.border,
-                    },
+                    { backgroundColor: active ? theme.primary : theme.card, borderColor: active ? theme.primary : theme.border },
                   ]}
                 >
                   <Text style={[s.chipText, { color: active ? theme.primaryText : theme.text }]}>{sub.code}</Text>
@@ -298,7 +291,7 @@ export default function PomodoroScreen() {
         </View>
       </View>
 
-      {/* Today summary + Recent log */}
+      {/* Today summary + Recent log (rendered with .map, not FlatList) */}
       <View style={s.card}>
         <Text style={s.title}>Today</Text>
         <Text style={s.todayText}>
@@ -319,18 +312,16 @@ export default function PomodoroScreen() {
         <View style={s.divider} />
 
         <Text style={s.title}>Recent sessions</Text>
-        {log.length === 0 ? (
+        {recent3.length === 0 ? (
           <Text style={s.muted}>No focus sessions yet.</Text>
         ) : (
-          <FlatList
-            data={log.slice(0, 3)} // show only the last 3
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => {
+          <View>
+            {recent3.map((item) => {
               const d = new Date(item.ts);
               const clock = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
               const dateStr = item.ts.slice(0, 10);
               return (
-                <View style={s.logRow}>
+                <View key={item.id} style={s.logRow}>
                   <Text style={s.logLeft}>
                     {dateStr} • {clock}
                   </Text>
@@ -339,17 +330,17 @@ export default function PomodoroScreen() {
                   </Text>
                 </View>
               );
-            }}
-          />
+            })}
+          </View>
         )}
       </View>
 
-      {/* NEW: Overall total */}
+      {/* Overall total */}
       <View style={s.card}>
         <Text style={s.title}>Overall</Text>
         <Text style={s.todayText}>
           Total focus time across all days:{" "}
-          <Text style={{ fontWeight: "800", color: theme.text }}>{overallTotal}</Text> min
+          <Text style={{ fontWeight: "800", color: theme.text }}>{log.reduce((sum, e) => sum + (e.minutes || 0), 0)}</Text> min
         </Text>
       </View>
 
