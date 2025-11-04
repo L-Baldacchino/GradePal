@@ -120,12 +120,7 @@ export default function SubjectPlannerScreen() {
   function addItem(newItem: Assessment) {
     setItems(prev => [...prev, newItem]);
   }
-  function reset() {
-    Alert.alert("Reset", `Reset ${code} to the starter template?`, [
-      { text: "Cancel" },
-      { text: "Reset", style: "destructive", onPress: () => setItems(seed) },
-    ]);
-  }
+
 
   // Scroll helpers
   const scrollItemIntoView = (index: number, id: string) => {
@@ -173,11 +168,6 @@ export default function SubjectPlannerScreen() {
           </View>
         </View>
 
-        <View style={s.bottomItem}>
-          <Pressable onPress={reset} style={[s.neutralBtn, s.fullWidthBtn, { backgroundColor: theme.border }]}>
-            <Text style={s.neutralBtnText}>Reset</Text>
-          </Pressable>
-        </View>
       </View>
     </View>
   );
