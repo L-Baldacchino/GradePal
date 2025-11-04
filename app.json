@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
     "android": {
-      "softwareKeyboardLayoutMode": "pan"
+      "softwareKeyboardLayoutMode": "resize"
     }
     },
     "android": {

@@ -1,11 +1,13 @@
 // app/grade-planner/[subject].tsx
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useNavigation } from "expo-router";
-import React, { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
     Alert,
     FlatList,
+    Keyboard,
     KeyboardAvoidingView,
+    LayoutChangeEvent,
     Modal,
     Platform,
     Pressable,
@@ -15,7 +17,7 @@ import {
     View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useTheme } from "../theme/ThemeProvider";
+import { useTheme } from "../../theme/ThemeProvider";
 
 export type Assessment = {
   id: string;
@@ -52,6 +54,22 @@ export default function SubjectPlannerScreen() {
   const [items, setItems] = useState<Assessment[]>(seed);
   const [showAdd, setShowAdd] = useState(false);
 
+  // Keyboard tracking
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const keyboardOpen = keyboardHeight > 0;
+  useEffect(() => {
+    const show = Keyboard.addListener("keyboardDidShow", e => setKeyboardHeight(e.endCoordinates?.height ?? 0));
+    const hide = Keyboard.addListener("keyboardDidHide", () => setKeyboardHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+
+  // Footer height (measured) so we can always pad correctly
+  const [footerH, setFooterH] = useState(72);
+
+  // FlatList ref + positions for fallback scrolling
+  const listRef = useRef<FlatList<Assessment>>(null);
+  const itemYRef = useRef<Record<string, number>>({});
+
   useLayoutEffect(() => {
     nav.setOptions({
       title: `Grade Planner • ${code}`,
@@ -61,6 +79,7 @@ export default function SubjectPlannerScreen() {
     });
   }, [nav, code, theme]);
 
+  // Load/save
   useEffect(() => {
     (async () => {
       try {
@@ -77,10 +96,11 @@ export default function SubjectPlannerScreen() {
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ items })).catch(() => {});
   }, [items, STORAGE_KEY]);
 
+  // Stats
   const { sumContribution, totalWeight } = useMemo(() => {
     const totalWeight = items.reduce((acc, i) => acc + clamp(toNum(i.weight)), 0);
     const contributions = items
-      .map((i) => {
+      .map(i => {
         const w = clamp(toNum(i.weight));
         const g = i.grade === undefined || i.grade === "" ? null : clamp(toNum(i.grade));
         return g === null ? 0 : (w * g) / 100;
@@ -92,13 +112,13 @@ export default function SubjectPlannerScreen() {
   const isPerfect = Math.abs(totalWeight - 100) < 0.01;
 
   function updateItem(id: string, patch: Partial<Assessment>) {
-    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)));
+    setItems(prev => prev.map(it => (it.id === id ? { ...it, ...patch } : it)));
   }
   function removeItem(id: string) {
-    setItems((prev) => prev.filter((it) => it.id !== id));
+    setItems(prev => prev.filter(it => it.id !== id));
   }
   function addItem(newItem: Assessment) {
-    setItems((prev) => [...prev, newItem]);
+    setItems(prev => [...prev, newItem]);
   }
   function reset() {
     Alert.alert("Reset", `Reset ${code} to the starter template?`, [
@@ -107,8 +127,63 @@ export default function SubjectPlannerScreen() {
     ]);
   }
 
+  // Scroll helpers
+  const scrollItemIntoView = (index: number, id: string) => {
+    // Try precise scrollToIndex first:
+    try {
+      listRef.current?.scrollToIndex({ index, viewPosition: 0.2, animated: true });
+    } catch {
+      // Fallback: use measured Y
+      const y = itemYRef.current[id] ?? 0;
+      const offset = Math.max(0, y - 24); // small top margin
+      setTimeout(() => listRef.current?.scrollToOffset({ offset, animated: true }), 0);
+    }
+  };
+
+  // List padding: always give room for footer + safe area,
+  // and when keyboard is open add keyboard height so last field stays visible.
+  const listBottomPad = insets.bottom + footerH + (keyboardOpen ? keyboardHeight + 8 : 24);
+
+  // Footer
+  const Footer = (
+    <View
+      style={[s.footer, { paddingBottom: insets.bottom + 8 }]}
+      onLayout={(e: LayoutChangeEvent) => setFooterH(e.nativeEvent.layout.height)}
+    >
+      <View style={s.bottomRowEven}>
+        <View style={s.bottomItem}>
+          <Pressable
+            onPress={() => setShowAdd(true)}
+            style={[s.primaryBtn, s.fullWidthBtn, { backgroundColor: theme.primary }]}
+          >
+            <Text style={[s.primaryBtnText, { color: theme.primaryText }]}>Add item</Text>
+          </Pressable>
+        </View>
+
+        <View style={[s.bottomItem, { alignItems: "center" }]}>
+          <View
+            style={[
+              s.weightPill,
+              { borderColor: isPerfect ? theme.success : theme.danger, backgroundColor: theme.card },
+            ]}
+          >
+            <Text style={[s.weightPillText, { color: isPerfect ? theme.success : theme.danger }]}>
+              {isPerfect ? `Total weighting = 100%` : `Total weighting = ${totalWeight.toFixed(1)}%`}
+            </Text>
+          </View>
+        </View>
+
+        <View style={s.bottomItem}>
+          <Pressable onPress={reset} style={[s.neutralBtn, s.fullWidthBtn, { backgroundColor: theme.border }]}>
+            <Text style={s.neutralBtnText}>Reset</Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+
   return (
-    <SafeAreaView style={[s.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <SafeAreaView style={[s.screen]}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -120,21 +195,29 @@ export default function SubjectPlannerScreen() {
           <Text style={s.bannerValue}>{sumContribution.toFixed(1)}%</Text>
         </View>
 
-        {/* List (keeps last input visible while typing) */}
         <FlatList
+          ref={listRef}
           data={items}
-          keyExtractor={(i) => i.id}
+          keyExtractor={i => i.id}
+          keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 220 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: listBottomPad }}
           ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-          renderItem={({ item }) => (
-            <View style={s.card}>
+          renderItem={({ item, index }) => (
+            <View
+              style={s.card}
+              onLayout={e => {
+                // Record Y for fallback scrolling
+                itemYRef.current[item.id] = e.nativeEvent.layout.y;
+              }}
+            >
               <TextInput
                 value={item.name}
-                onChangeText={(t) => updateItem(item.id, { name: t })}
+                onChangeText={t => updateItem(item.id, { name: t })}
                 placeholder="Assessment name"
                 placeholderTextColor={theme.textMuted}
                 style={[s.inputText, { marginBottom: 8 }]}
+                onFocus={() => scrollItemIntoView(index, item.id)}
               />
 
               <View style={s.row}>
@@ -143,10 +226,11 @@ export default function SubjectPlannerScreen() {
                   <TextInput
                     keyboardType="numeric"
                     value={item.weight}
-                    onChangeText={(t) => updateItem(item.id, { weight: t.replace(/[^0-9.]/g, "") })}
+                    onChangeText={t => updateItem(item.id, { weight: t.replace(/[^0-9.]/g, "") })}
                     placeholder="%"
                     placeholderTextColor={theme.textMuted}
                     style={s.input}
+                    onFocus={() => scrollItemIntoView(index, item.id)}
                   />
                 </View>
                 <View style={{ width: 120, flexGrow: 1 }}>
@@ -154,10 +238,11 @@ export default function SubjectPlannerScreen() {
                   <TextInput
                     keyboardType="numeric"
                     value={item.grade ?? ""}
-                    onChangeText={(t) => updateItem(item.id, { grade: t.replace(/[^0-9.]/g, "") })}
+                    onChangeText={t => updateItem(item.id, { grade: t.replace(/[^0-9.]/g, "") })}
                     placeholder="(blank = N/A)"
                     placeholderTextColor={theme.textMuted}
                     style={s.input}
+                    onFocus={() => scrollItemIntoView(index, item.id)}
                   />
                 </View>
               </View>
@@ -176,43 +261,8 @@ export default function SubjectPlannerScreen() {
               </View>
             </View>
           )}
-          ListFooterComponent={<View style={{ height: 12 }} />}
+          ListFooterComponent={Footer}
         />
-
-        {/* Bottom bar — even distribution */}
-        <View style={s.bottomBar}>
-          <View style={s.bottomRowEven}>
-            <View style={s.bottomItem}>
-              <Pressable onPress={() => setShowAdd(true)} style={[s.primaryBtn, s.fullWidthBtn, { backgroundColor: theme.primary }]}>
-                <Text style={[s.primaryBtnText, { color: theme.primaryText }]}>Add item</Text>
-              </Pressable>
-            </View>
-
-            <View style={[s.bottomItem, { alignItems: "center" }]}>
-              <View
-                style={[
-                  s.weightPill,
-                  { borderColor: isPerfect ? theme.success : theme.danger, backgroundColor: theme.card },
-                ]}
-              >
-                <Text
-                  style={[
-                    s.weightPillText,
-                    { color: isPerfect ? theme.success : theme.danger },
-                  ]}
-                >
-                  {isPerfect ? `Total weighting = 100%` : `Total weighting = ${totalWeight.toFixed(1)}%`}
-                </Text>
-              </View>
-            </View>
-
-            <View style={s.bottomItem}>
-              <Pressable onPress={reset} style={[s.neutralBtn, s.fullWidthBtn, { backgroundColor: theme.border }]}>
-                <Text style={s.neutralBtnText}>Reset</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
 
         {/* Add item modal */}
         <Modal visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
@@ -221,7 +271,7 @@ export default function SubjectPlannerScreen() {
               <Text style={s.modalTitle}>Add assessment</Text>
               <AddForm
                 onCancel={() => setShowAdd(false)}
-                onAdd={(payload) => {
+                onAdd={payload => {
                   addItem(payload);
                   setShowAdd(false);
                 }}
@@ -271,7 +321,7 @@ function AddForm({ onCancel, onAdd }: { onCancel: () => void; onAdd: (a: Assessm
           <Text style={s.label}>Weight %</Text>
           <TextInput
             value={weight}
-            onChangeText={(t) => setWeight(t.replace(/[^0-9.]/g, ""))}
+            onChangeText={t => setWeight(t.replace(/[^0-9.]/g, ""))}
             keyboardType="numeric"
             placeholder="e.g. 20"
             placeholderTextColor={theme.textMuted}
@@ -282,7 +332,7 @@ function AddForm({ onCancel, onAdd }: { onCancel: () => void; onAdd: (a: Assessm
           <Text style={s.label}>Grade % (optional)</Text>
           <TextInput
             value={grade}
-            onChangeText={(t) => setGrade(t.replace(/[^0-9.]/g, ""))}
+            onChangeText={t => setGrade(t.replace(/[^0-9.]/g, ""))}
             keyboardType="numeric"
             placeholder="leave blank if unknown"
             placeholderTextColor={theme.textMuted}
@@ -306,7 +356,7 @@ function AddForm({ onCancel, onAdd }: { onCancel: () => void; onAdd: (a: Assessm
 const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: t.bg },
-    banner: { marginTop: 12, marginHorizontal: 16, paddingHorizontal: 16, paddingVertical: 14, borderRadius: 18, backgroundColor: t.card, borderColor: t.border, borderWidth: 1 },
+    banner: { marginTop: 0, marginHorizontal: 16, paddingHorizontal: 16, paddingVertical: 14, borderRadius: 18, backgroundColor: t.card, borderColor: t.border, borderWidth: 1 },
     bannerLabel: { color: t.textMuted, fontSize: 12, fontWeight: "600", marginBottom: 2 },
     bannerValue: { color: t.success, fontSize: 28, fontWeight: "800" },
 
@@ -323,7 +373,15 @@ const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
     smallBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
     smallBtnText: { color: "#fff" },
 
-    bottomBar: { position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: t.navBg, borderTopColor: t.border, borderTopWidth: 1, paddingVertical: 10, paddingHorizontal: 12 },
+    footer: {
+      backgroundColor: t.navBg,
+      borderTopColor: t.border,
+      borderTopWidth: 1,
+      paddingTop: 10,
+      paddingHorizontal: 12,
+      borderRadius: 12,
+      marginTop: 12,
+    },
     bottomRowEven: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", columnGap: 12 },
     bottomItem: { flex: 1 },
     fullWidthBtn: { width: "100%", alignItems: "center" },

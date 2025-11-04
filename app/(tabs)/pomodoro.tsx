@@ -1,5 +1,4 @@
 // app/(tabs)/pomodoro.tsx
-import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -16,7 +15,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useTheme } from "../theme/ThemeProvider";
+import { useTheme } from "../../theme/ThemeProvider";
 
 type Subject = { code: string; name: string };
 
@@ -38,7 +37,7 @@ function formatMMSS(totalSeconds: number) {
 }
 
 export default function PomodoroScreen() {
-  const { theme, toggleTheme } = useTheme();
+  const { theme } = useTheme();
   const s = makeStyles(theme);
   const insets = useSafeAreaInsets();
 
@@ -198,19 +197,14 @@ export default function PomodoroScreen() {
   }
 
   return (
-    <SafeAreaView style={[s.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    // NOTE: no top padding — native header sits above the scene already
+    <SafeAreaView style={[s.screen, { paddingBottom: insets.bottom }]}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={0}
       >
-        {/* Header row with theme toggle (no native header) */}
-        <View style={s.header}>
-          <Text style={s.title}>Pomodoro</Text>
-          <Pressable onPress={toggleTheme} style={{ paddingHorizontal: 6, paddingVertical: 4 }}>
-            <Ionicons name={theme.name === "dark" ? "sunny" : "moon"} size={20} color={theme.navText} />
-          </Pressable>
-        </View>
+        {/* Intro line to replace the old in-screen header */}
         <Text style={s.sub}>Tap the timer to type a custom duration.</Text>
 
         {/* Subject selector */}
@@ -344,9 +338,8 @@ export default function PomodoroScreen() {
 const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: t.bg },
-    header: { paddingHorizontal: 16, paddingVertical: 12, backgroundColor: t.navBg, borderBottomColor: t.border, borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-    title: { color: t.navText, fontSize: 22, fontWeight: "800" },
-    sub: { color: t.textMuted, paddingHorizontal: 16, paddingTop: 6 },
+
+    sub: { color: t.textMuted, paddingHorizontal: 16, paddingTop: 10 },
 
     subjectRow: { paddingHorizontal: 16, paddingVertical: 12, borderBottomColor: t.border, borderBottomWidth: 1 },
     label: { color: t.textMuted, fontSize: 12, marginBottom: 6 },

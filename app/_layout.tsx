@@ -1,30 +1,27 @@
 // app/_layout.tsx
 import { Stack } from "expo-router";
-import { ThemeProvider, useTheme } from "./theme/ThemeProvider";
-
-function ThemedStack() {
-  const { theme } = useTheme();
-
-  // Apply themed headers
-  return (
-    <Stack
-      screenOptions={{
-        headerShown: true,
-        headerStyle: { backgroundColor: theme.navBg },
-        headerTintColor: theme.navText,
-        headerTitleStyle: { color: theme.navText },
-      }}
-    >
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="grade-planner/[subject]" options={{ title: "Grade Planner" }} />
-    </Stack>
-  );
-}
+import React from "react";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import ThemeProvider from "../theme/ThemeProvider";
 
 export default function RootLayout() {
   return (
-    <ThemeProvider>
-      <ThemedStack />
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <Stack>
+          {/* Hide header for the (tabs) group only */}
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+
+          {/* Keep header for pages like grade-planner/[subject] */}
+          <Stack.Screen
+            name="grade-planner/[subject]"
+            options={{
+              headerShown: true,
+              title: "Subject", // this will be replaced dynamically
+            }}
+          />
+        </Stack>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }
