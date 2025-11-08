@@ -3,19 +3,17 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-    Alert,
-    FlatList,
-    Keyboard,
-    KeyboardAvoidingView,
-    LayoutChangeEvent,
-    Modal,
-    Platform,
-    Pressable,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  Alert,
+  LayoutChangeEvent,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
+import { KeyboardAwareFlatList } from "react-native-keyboard-aware-scroll-view";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../theme/ThemeProvider";
 
@@ -54,21 +52,11 @@ export default function SubjectPlannerScreen() {
   const [items, setItems] = useState<Assessment[]>(seed);
   const [showAdd, setShowAdd] = useState(false);
 
-  // Keyboard tracking
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const keyboardOpen = keyboardHeight > 0;
-  useEffect(() => {
-    const show = Keyboard.addListener("keyboardDidShow", e => setKeyboardHeight(e.endCoordinates?.height ?? 0));
-    const hide = Keyboard.addListener("keyboardDidHide", () => setKeyboardHeight(0));
-    return () => { show.remove(); hide.remove(); };
-  }, []);
-
   // Footer height (measured) so we can always pad correctly
   const [footerH, setFooterH] = useState(72);
 
-  // FlatList ref + positions for fallback scrolling
-  const listRef = useRef<FlatList<Assessment>>(null);
-  const itemYRef = useRef<Record<string, number>>({});
+  // FlatList ref
+  const listRef = useRef<KeyboardAwareFlatList<Assessment>>(null);
 
   useLayoutEffect(() => {
     nav.setOptions({
@@ -121,23 +109,9 @@ export default function SubjectPlannerScreen() {
     setItems(prev => [...prev, newItem]);
   }
 
-
-  // Scroll helpers
-  const scrollItemIntoView = (index: number, id: string) => {
-    // Try precise scrollToIndex first:
-    try {
-      listRef.current?.scrollToIndex({ index, viewPosition: 0.2, animated: true });
-    } catch {
-      // Fallback: use measured Y
-      const y = itemYRef.current[id] ?? 0;
-      const offset = Math.max(0, y - 24); // small top margin
-      setTimeout(() => listRef.current?.scrollToOffset({ offset, animated: true }), 0);
-    }
-  };
-
-  // List padding: always give room for footer + safe area,
-  // and when keyboard is open add keyboard height so last field stays visible.
-  const listBottomPad = insets.bottom + footerH + (keyboardOpen ? keyboardHeight + 8 : 24);
+  // List padding: room for footer + safe area.
+  // KeyboardAwareFlatList will add extra space for the keyboard automatically.
+  const listBottomPad = insets.bottom + footerH + 24;
 
   // Footer
   const Footer = (
@@ -167,109 +141,105 @@ export default function SubjectPlannerScreen() {
             </Text>
           </View>
         </View>
-
       </View>
     </View>
   );
 
   return (
     <SafeAreaView style={[s.screen]}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={0}
-      >
-        {/* Accumulated Grade */}
-        <View style={s.banner}>
-          <Text style={s.bannerLabel}>Accumulated Grade so far</Text>
-          <Text style={s.bannerValue}>{sumContribution.toFixed(1)}%</Text>
-        </View>
+      {/* NOTE:
+         - KeyboardAwareFlatList handles scrolling inputs into view on both iOS & Android.
+         - `enableOnAndroid` + `extraScrollHeight` ensure the focused field is not hidden.
+      */}
+      <KeyboardAwareFlatList
+        ref={listRef}
+        data={items}
+        keyExtractor={i => i.id}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+        enableOnAndroid
+        extraScrollHeight={280}                  // lifts focused input above keyboard
+        enableAutomaticScroll
+        contentContainerStyle={{ padding: 16, paddingBottom: listBottomPad }}
+        ListHeaderComponent={
+          <View style={s.banner}>
+            <Text style={s.bannerLabel}>Accumulated Grade so far</Text>
+            <Text style={s.bannerValue}>{sumContribution.toFixed(1)}%</Text>
+          </View>
+        }
+        ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+        renderItem={({ item }) => (
+          <View style={s.card}>
+            <TextInput
+              value={item.name}
+              onChangeText={t => updateItem(item.id, { name: t })}
+              placeholder="Assessment name"
+              placeholderTextColor={theme.textMuted}
+              style={[s.inputText, { marginBottom: 8 }]}
+              returnKeyType="next"
+              blurOnSubmit={false}
+            />
 
-        <FlatList
-          ref={listRef}
-          data={items}
-          keyExtractor={i => i.id}
-          keyboardDismissMode="on-drag"
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ padding: 16, paddingBottom: listBottomPad }}
-          ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-          renderItem={({ item, index }) => (
-            <View
-              style={s.card}
-              onLayout={e => {
-                // Record Y for fallback scrolling
-                itemYRef.current[item.id] = e.nativeEvent.layout.y;
-              }}
-            >
-              <TextInput
-                value={item.name}
-                onChangeText={t => updateItem(item.id, { name: t })}
-                placeholder="Assessment name"
-                placeholderTextColor={theme.textMuted}
-                style={[s.inputText, { marginBottom: 8 }]}
-                onFocus={() => scrollItemIntoView(index, item.id)}
-              />
-
-              <View style={s.row}>
-                <View style={{ width: 96, flexGrow: 1 }}>
-                  <Text style={s.label}>Weight %</Text>
-                  <TextInput
-                    keyboardType="numeric"
-                    value={item.weight}
-                    onChangeText={t => updateItem(item.id, { weight: t.replace(/[^0-9.]/g, "") })}
-                    placeholder="%"
-                    placeholderTextColor={theme.textMuted}
-                    style={s.input}
-                    onFocus={() => scrollItemIntoView(index, item.id)}
-                  />
-                </View>
-                <View style={{ width: 120, flexGrow: 1 }}>
-                  <Text style={s.label}>Grade %</Text>
-                  <TextInput
-                    keyboardType="numeric"
-                    value={item.grade ?? ""}
-                    onChangeText={t => updateItem(item.id, { grade: t.replace(/[^0-9.]/g, "") })}
-                    placeholder="(blank = N/A)"
-                    placeholderTextColor={theme.textMuted}
-                    style={s.input}
-                    onFocus={() => scrollItemIntoView(index, item.id)}
-                  />
-                </View>
+            <View style={s.row}>
+              <View style={{ width: 96, flexGrow: 1 }}>
+                <Text style={s.label}>Weight %</Text>
+                <TextInput
+                  keyboardType="numeric"
+                  value={item.weight}
+                  onChangeText={t => updateItem(item.id, { weight: t.replace(/[^0-9.]/g, "") })}
+                  placeholder="%"
+                  placeholderTextColor={theme.textMuted}
+                  style={s.input}
+                  returnKeyType="next"
+                  blurOnSubmit={false}
+                />
               </View>
-
-              <View style={s.cardFooter}>
-                <Text style={s.smallMuted}>Type: {item.type ?? "Other"}</Text>
-                <Text style={s.small}>
-                  Contribution: {(((toNum(item.weight) * toNum(item.grade)) / 100) || 0).toFixed(1)}%
-                </Text>
-              </View>
-
-              <View style={[s.row, { marginTop: 12 }]}>
-                <Pressable onPress={() => removeItem(item.id)} style={[s.smallBtn, { backgroundColor: theme.danger }]}>
-                  <Text style={s.smallBtnText}>Remove</Text>
-                </Pressable>
+              <View style={{ width: 120, flexGrow: 1 }}>
+                <Text style={s.label}>Grade %</Text>
+                <TextInput
+                  keyboardType="numeric"
+                  value={item.grade ?? ""}
+                  onChangeText={t => updateItem(item.id, { grade: t.replace(/[^0-9.]/g, "") })}
+                  placeholder="(blank = N/A)"
+                  placeholderTextColor={theme.textMuted}
+                  style={s.input}
+                  returnKeyType="done"
+                />
               </View>
             </View>
-          )}
-          ListFooterComponent={Footer}
-        />
 
-        {/* Add item modal */}
-        <Modal visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
-          <View style={s.modalOverlay}>
-            <View style={s.modalCard}>
-              <Text style={s.modalTitle}>Add assessment</Text>
-              <AddForm
-                onCancel={() => setShowAdd(false)}
-                onAdd={payload => {
-                  addItem(payload);
-                  setShowAdd(false);
-                }}
-              />
+            <View style={s.cardFooter}>
+              <Text style={s.smallMuted}>Type: {item.type ?? "Other"}</Text>
+              <Text style={s.small}>
+                Contribution: {(((toNum(item.weight) * toNum(item.grade)) / 100) || 0).toFixed(1)}%
+              </Text>
+            </View>
+
+            <View style={[s.row, { marginTop: 12 }]}>
+              <Pressable onPress={() => removeItem(item.id)} style={[s.smallBtn, { backgroundColor: theme.danger }]}>
+                <Text style={s.smallBtnText}>Remove</Text>
+              </Pressable>
             </View>
           </View>
-        </Modal>
-      </KeyboardAvoidingView>
+        )}
+        ListFooterComponent={Footer}
+      />
+
+      {/* Add item modal */}
+      <Modal visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
+        <View style={s.modalOverlay}>
+          <View style={s.modalCard}>
+            <Text style={s.modalTitle}>Add assessment</Text>
+            <AddForm
+              onCancel={() => setShowAdd(false)}
+              onAdd={payload => {
+                addItem(payload);
+                setShowAdd(false);
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -304,6 +274,8 @@ function AddForm({ onCancel, onAdd }: { onCancel: () => void; onAdd: (a: Assessm
           placeholder="e.g. Assignment 1"
           placeholderTextColor={theme.textMuted}
           style={s.input}
+          returnKeyType="next"
+          blurOnSubmit={false}
         />
       </View>
       <View style={[s.row, { marginBottom: 16 }]}>
@@ -316,6 +288,8 @@ function AddForm({ onCancel, onAdd }: { onCancel: () => void; onAdd: (a: Assessm
             placeholder="e.g. 20"
             placeholderTextColor={theme.textMuted}
             style={s.input}
+            returnKeyType="next"
+            blurOnSubmit={false}
           />
         </View>
         <View style={{ flex: 1 }}>
@@ -327,6 +301,7 @@ function AddForm({ onCancel, onAdd }: { onCancel: () => void; onAdd: (a: Assessm
             placeholder="leave blank if unknown"
             placeholderTextColor={theme.textMuted}
             style={s.input}
+            returnKeyType="done"
           />
         </View>
       </View>
@@ -346,12 +321,31 @@ function AddForm({ onCancel, onAdd }: { onCancel: () => void; onAdd: (a: Assessm
 const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: t.bg },
-    banner: { marginTop: 0, marginHorizontal: 16, paddingHorizontal: 16, paddingVertical: 14, borderRadius: 18, backgroundColor: t.card, borderColor: t.border, borderWidth: 1 },
+
+    banner: {
+      marginTop: 0,
+      marginHorizontal: 0,
+      marginBottom: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      borderRadius: 18,
+      backgroundColor: t.card,
+      borderColor: t.border,
+      borderWidth: 1,
+    },
     bannerLabel: { color: t.textMuted, fontSize: 12, fontWeight: "600", marginBottom: 2 },
     bannerValue: { color: t.success, fontSize: 28, fontWeight: "800" },
 
     card: { borderRadius: 16, padding: 16, backgroundColor: t.card, borderColor: t.border, borderWidth: 1 },
-    input: { color: t.text, borderColor: t.border, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: t.card },
+    input: {
+      color: t.text,
+      borderColor: t.border,
+      borderWidth: 1,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: Platform.select({ ios: 10, android: 8 }),
+      backgroundColor: t.card,
+    },
     inputText: { color: t.text, fontSize: 16 },
     label: { color: t.textMuted, fontSize: 12, marginBottom: 4 },
     row: { flexDirection: "row", columnGap: 12 },
