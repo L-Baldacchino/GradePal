@@ -4,10 +4,12 @@ import { useLocalSearchParams, useNavigation } from "expo-router";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  KeyboardAvoidingView,
   LayoutChangeEvent,
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -52,11 +54,11 @@ export default function SubjectPlannerScreen() {
   const [items, setItems] = useState<Assessment[]>(seed);
   const [showAdd, setShowAdd] = useState(false);
 
-  // Footer height (measured) so we can always pad correctly
+  // Footer height measured so we can pad list bottom correctly
   const [footerH, setFooterH] = useState(72);
 
-  // FlatList ref
-  const listRef = useRef<KeyboardAwareFlatList<Assessment>>(null);
+  // FlatList ref (no generic to avoid type issues)
+  const listRef = useRef<any>(null);
 
   useLayoutEffect(() => {
     nav.setOptions({
@@ -88,7 +90,7 @@ export default function SubjectPlannerScreen() {
   const { sumContribution, totalWeight } = useMemo(() => {
     const totalWeight = items.reduce((acc, i) => acc + clamp(toNum(i.weight)), 0);
     const contributions = items
-      .map(i => {
+      .map((i) => {
         const w = clamp(toNum(i.weight));
         const g = i.grade === undefined || i.grade === "" ? null : clamp(toNum(i.grade));
         return g === null ? 0 : (w * g) / 100;
@@ -100,17 +102,16 @@ export default function SubjectPlannerScreen() {
   const isPerfect = Math.abs(totalWeight - 100) < 0.01;
 
   function updateItem(id: string, patch: Partial<Assessment>) {
-    setItems(prev => prev.map(it => (it.id === id ? { ...it, ...patch } : it)));
+    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)));
   }
   function removeItem(id: string) {
-    setItems(prev => prev.filter(it => it.id !== id));
+    setItems((prev) => prev.filter((it) => it.id !== id));
   }
   function addItem(newItem: Assessment) {
-    setItems(prev => [...prev, newItem]);
+    setItems((prev) => [...prev, newItem]);
   }
 
-  // List padding: room for footer + safe area.
-  // KeyboardAwareFlatList will add extra space for the keyboard automatically.
+  // List padding: room for footer + safe area. KeyboardAwareFlatList handles keyboard.
   const listBottomPad = insets.bottom + footerH + 24;
 
   // Footer
@@ -120,6 +121,7 @@ export default function SubjectPlannerScreen() {
       onLayout={(e: LayoutChangeEvent) => setFooterH(e.nativeEvent.layout.height)}
     >
       <View style={s.bottomRowEven}>
+        {/* Add item */}
         <View style={s.bottomItem}>
           <Pressable
             onPress={() => setShowAdd(true)}
@@ -129,6 +131,7 @@ export default function SubjectPlannerScreen() {
           </Pressable>
         </View>
 
+        {/* Total weighting pill */}
         <View style={[s.bottomItem, { alignItems: "center" }]}>
           <View
             style={[
@@ -146,19 +149,15 @@ export default function SubjectPlannerScreen() {
   );
 
   return (
-    <SafeAreaView style={[s.screen]}>
-      {/* NOTE:
-         - KeyboardAwareFlatList handles scrolling inputs into view on both iOS & Android.
-         - `enableOnAndroid` + `extraScrollHeight` ensure the focused field is not hidden.
-      */}
+    <SafeAreaView style={[s.screen]} edges={["top", "left", "right"]}>
       <KeyboardAwareFlatList
         ref={listRef}
         data={items}
-        keyExtractor={i => i.id}
+        keyExtractor={(i) => i.id}
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
         enableOnAndroid
-        extraScrollHeight={280}                  // lifts focused input above keyboard
+        extraScrollHeight={280}        // lifts focused input well above keyboard
         enableAutomaticScroll
         contentContainerStyle={{ padding: 16, paddingBottom: listBottomPad }}
         ListHeaderComponent={
@@ -172,7 +171,7 @@ export default function SubjectPlannerScreen() {
           <View style={s.card}>
             <TextInput
               value={item.name}
-              onChangeText={t => updateItem(item.id, { name: t })}
+              onChangeText={(t) => updateItem(item.id, { name: t })}
               placeholder="Assessment name"
               placeholderTextColor={theme.textMuted}
               style={[s.inputText, { marginBottom: 8 }]}
@@ -186,7 +185,7 @@ export default function SubjectPlannerScreen() {
                 <TextInput
                   keyboardType="numeric"
                   value={item.weight}
-                  onChangeText={t => updateItem(item.id, { weight: t.replace(/[^0-9.]/g, "") })}
+                  onChangeText={(t) => updateItem(item.id, { weight: t.replace(/[^0-9.]/g, "") })}
                   placeholder="%"
                   placeholderTextColor={theme.textMuted}
                   style={s.input}
@@ -199,7 +198,7 @@ export default function SubjectPlannerScreen() {
                 <TextInput
                   keyboardType="numeric"
                   value={item.grade ?? ""}
-                  onChangeText={t => updateItem(item.id, { grade: t.replace(/[^0-9.]/g, "") })}
+                  onChangeText={(t) => updateItem(item.id, { grade: t.replace(/[^0-9.]/g, "") })}
                   placeholder="(blank = N/A)"
                   placeholderTextColor={theme.textMuted}
                   style={s.input}
@@ -225,21 +224,32 @@ export default function SubjectPlannerScreen() {
         ListFooterComponent={Footer}
       />
 
-      {/* Add item modal */}
+      {/* Add item modal (keyboard-safe) */}
       <Modal visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
-        <View style={s.modalOverlay}>
-          <View style={s.modalCard}>
-            <Text style={s.modalTitle}>Add assessment</Text>
-            <AddForm
-              onCancel={() => setShowAdd(false)}
-              onAdd={payload => {
-                addItem(payload);
-                setShowAdd(false);
-              }}
-            />
-          </View>
-        </View>
+        <SafeAreaView style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)" }} edges={["top"]}>
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            keyboardVerticalOffset={0}
+          >
+            <View style={{ flex: 1, justifyContent: "flex-end" }}>
+              <View style={s.modalCard}>
+                <Text style={s.modalTitle}>Add assessment</Text>
+                <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 8 }}>
+                  <AddForm
+                    onCancel={() => setShowAdd(false)}
+                    onAdd={(payload) => {
+                      addItem(payload);
+                      setShowAdd(false);
+                    }}
+                  />
+                </ScrollView>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
       </Modal>
+      <SafeAreaView edges={["bottom"]} style={{ backgroundColor: theme.bg }} />
     </SafeAreaView>
   );
 }
@@ -250,6 +260,10 @@ function AddForm({ onCancel, onAdd }: { onCancel: () => void; onAdd: (a: Assessm
   const [name, setName] = useState("");
   const [weight, setWeight] = useState("");
   const [grade, setGrade] = useState("");
+
+  // focus chain so next field is never hidden
+  const weightRef = React.useRef<TextInput>(null);
+  const gradeRef = React.useRef<TextInput>(null);
 
   function submit() {
     if (!name.trim()) return Alert.alert("Name required");
@@ -276,32 +290,39 @@ function AddForm({ onCancel, onAdd }: { onCancel: () => void; onAdd: (a: Assessm
           style={s.input}
           returnKeyType="next"
           blurOnSubmit={false}
+          onSubmitEditing={() => weightRef.current?.focus()}
         />
       </View>
       <View style={[s.row, { marginBottom: 16 }]}>
         <View style={{ flex: 1 }}>
           <Text style={s.label}>Weight %</Text>
           <TextInput
+            ref={weightRef}
             value={weight}
-            onChangeText={t => setWeight(t.replace(/[^0-9.]/g, ""))}
-            keyboardType="numeric"
+            onChangeText={(t) => setWeight(t.replace(/[^0-9.]/g, ""))}
+            keyboardType={Platform.OS === "ios" ? "decimal-pad" : "number-pad"}
+            inputMode="decimal"
             placeholder="e.g. 20"
             placeholderTextColor={theme.textMuted}
             style={s.input}
             returnKeyType="next"
             blurOnSubmit={false}
+            onSubmitEditing={() => gradeRef.current?.focus()}
           />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={s.label}>Grade % (optional)</Text>
           <TextInput
+            ref={gradeRef}
             value={grade}
-            onChangeText={t => setGrade(t.replace(/[^0-9.]/g, ""))}
-            keyboardType="numeric"
+            onChangeText={(t) => setGrade(t.replace(/[^0-9.]/g, ""))}
+            keyboardType={Platform.OS === "ios" ? "decimal-pad" : "number-pad"}
+            inputMode="decimal"
             placeholder="leave blank if unknown"
             placeholderTextColor={theme.textMuted}
             style={s.input}
             returnKeyType="done"
+            onSubmitEditing={submit}
           />
         </View>
       </View>
@@ -345,6 +366,7 @@ const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
       paddingHorizontal: 12,
       paddingVertical: Platform.select({ ios: 10, android: 8 }),
       backgroundColor: t.card,
+      fontSize: 16,
     },
     inputText: { color: t.text, fontSize: 16 },
     label: { color: t.textMuted, fontSize: 12, marginBottom: 4 },
@@ -373,12 +395,19 @@ const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
     weightPill: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14, borderWidth: 1, backgroundColor: t.card },
     weightPillText: { fontSize: 14, fontWeight: "600" },
 
-    modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "flex-end" },
-    modalCard: { width: "100%", backgroundColor: t.bg, borderTopColor: t.border, borderTopWidth: 1, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 16 },
+    modalCard: {
+      width: "100%",
+      backgroundColor: t.bg,
+      borderTopColor: t.border,
+      borderTopWidth: 1,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      padding: 16,
+    },
     modalTitle: { color: t.text, fontSize: 18, fontWeight: "600", marginBottom: 12 },
 
-    primaryBtn: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16 },
+    primaryBtn: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, alignItems: "center" },
     primaryBtnText: { fontWeight: "700" },
-    neutralBtn: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16 },
+    neutralBtn: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, alignItems: "center" },
     neutralBtnText: { color: t.text },
   });
