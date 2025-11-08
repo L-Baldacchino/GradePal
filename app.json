@@ -1,25 +1,22 @@
 {
   "expo": {
     "name": "Grade Pal",
-    "slug": "grade-pal",
+    "slug": "ExamCalculator",
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "examcalculator",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-
     "splash": {
       "image": "./assets/images/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#0A1A2F"
     },
-
     "ios": {
       "supportsTablet": true,
       "buildNumber": "1"
     },
-
     "android": {
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
@@ -31,12 +28,10 @@
       "package": "com.l.baldacchino.GradePal",
       "versionCode": 1
     },
-
     "web": {
       "output": "static",
       "favicon": "./assets/images/icon.png"
     },
-
     "plugins": [
       "expo-router",
       [
@@ -54,12 +49,12 @@
         }
       ]
     ],
-
     "extra": {
       "router": {},
       "eas": {
         "projectId": "5536d06d-77ae-40f0-9918-f42b89b027cb"
       }
-    }
+    },
+    "owner": "l.baldacchino"
   }
 }

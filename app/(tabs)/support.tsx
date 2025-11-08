@@ -220,7 +220,7 @@ export default function SupportScreen() {
             <Text style={s.title}>Support the project</Text>
             <Text style={s.body}>
               If the app helped you, consider buying me a coffee. It keeps the
-              project alive and supports future development. Please note that this application will always be free to use!
+              project alive and supports future development.
             </Text>
 
             <Pressable
