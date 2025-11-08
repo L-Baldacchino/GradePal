@@ -1,50 +1,194 @@
-# Welcome to your Expo app 👋
+# 📚 Grade Pal — Your Uni Grade Companion
+_Created by Luke Baldacchino_
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A lightweight, distraction-free app that helps students track grades, calculate required marks, and stay focused.
 
-## Get started
+## 🎯 What is Grade Pal?
 
-1. Install dependencies
+Grade Pal is a clean, modern mobile app designed specifically for university students who want a simple way to:
+- Track each subject
+- Add assessments, exams, and grades
+- Instantly see their accumulated grade
+- Calculate how much they need to pass
+- Stay productive using a built-in Pomodoro timer
+- Support development by sending feedback or donating
+  
+The app focuses on clarity, lightweight functionality, and zero distractions.
 
-   ```bash
-   npm install
-   ```
+## ❤️ Why Grade Pal Exists
+Grade Pal was created because most students either:
+- use messy spreadsheets
+- use websites full of ads
+- or don’t know where they stand academically
 
-2. Start the app
+This app solves that in the simplest possible way.
+Clean, fast, reliable, made for real students with real workloads.
 
-   ```bash
-   npx expo start
-   ```
+## ☕️ Support the Project
+If Grade Pal helps you, please consider supporting development ❤️
 
-In the output, you'll find options to open the app in a
+👉 Buy me a coffee: https://www.buymeacoffee.com/teraau
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## 💬 Community & Support
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+Have feedback, found a bug, or want to discuss ideas?
 
-## Get a fresh project
+👉 **Join the community Discord [here](https://discord.gg/frUpBh3jm4)**
 
-When you're ready, run:
+Inside the server you’ll find:
+- 🐞 Bug reporting
+- 💡 Feature suggestions
+- 📢 App updates and announcements
+- ❓ Help from the developer and community
 
-```bash
-npm run reset-project
-```
+Feedback is directly built into the app, but you can also reach me here:
+- 📨 terabadau@gmail.com
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+_____________________________________________________
 
-## Learn more
+## ✨ Core Features
 
-To learn more about developing your project with Expo, look at the following resources:
+### 1. Multi-Subject Grade Tracking 
+- Add as many subjects as you like.
+- Each subject stores:
+  - Subject code (e.g., CSE3MAD)
+  - Subject name (e.g., Mobile Application Development)
+- A fully customisable grade planner
+- Switch between subjects instantly
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+### 2. Smart Grade Planner 
+Each subject includes its own planner where you can:
+- Add/remove assessments and exams
+- Enter weight % and grades
+- View contribution of each item
+- Automatically see your Accumulated Grade So Far
+- Confirm total weighting equals 100%
+- Beautiful, theme-consistent UI
+- The planner adjusts dynamically while you type, even when the keyboard is open
 
-## Join the community
+### 3. Built-In Pomodoro Timer
+Stay productive using a clean, focused Pomodoro timer:
+- Tap time values to manually type custom times
+- Optional break timer after a session
+- Alerts when a session finishes
+- Tracks daily sessions
+- Shows recent sessions (last 3)
+- Shows all-time totals per subject
+- Syncs with your list of subjects
+- Dark and light theme safe-area layouts
+- Clean scrolling behaviour without conflicts
+- A powerful study tool without extra noise
 
-Join our community of developers creating universal apps.
+### 4. Support & Feedback Screen
+Inside the Support tab, students can:
+- Read why the app was built
+- Donate via Buy Me a Coffee
+- Send feedback directly from the app (email)
+- Email subject auto-includes app version
+- Works with Gmail, Outlook, and system chooser
+- Reset all saved data across the entire app
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## 🎨 Theme Support
+Grade Pal includes multiple themes:
+- 🌙 Dark Mode (soft navy palette)
+- 🌤️ Light Mode (soft lavender palette)
+- Toggle in the top right corner
+  - Themes apply across all screens: home, planner, pomodoro, support
+
+
+## 📱 How to Use
+### 🏠 Home Screen
+- Tap Add Subject
+- Enter subject code + subject name
+- Tap a subject card to open its grade planner
+
+### 📊 Grade Planner
+Inside each subject:
+- Tap Add Item to add an assessment
+
+Enter:
+- Name
+- Weight %
+- Grade (optional)
+Your Accumulated Grade updates instantly
+
+The Total Weighting pill shows:
+- ✅ Green if totals 100%
+- 🔴 Red if totals do not equal 100%
+
+Remove any item with the Remove button.
+
+### ⏱ Pomodoro Timer
+- Select a subject
+- Tap the timer values to manually enter times
+- Press Start Focus
+- Receive an alert when complete
+
+View:
+- Last 3 sessions
+- All-time totals per subject
+
+### 💬 Support Tab
+- Buy the developer a coffee ☕️
+- Send feedback via email
+- Reset all stored data
+
+
+## 🔒 Privacy & Data
+Grade Pal:
+- Stores all data locally on the device
+- Does not collect analytics
+- Does not transmit personal data
+- Requires no login, no account, no cloud services
+
+
+## 🧰 Tech Stack
+
+Grade Pal is built using a modern, lightweight, and highly reliable mobile development stack designed for performance and simplicity.
+
+### **Core Framework**
+- **React Native (Expo)** – Cross-platform mobile development with fast iteration.
+
+### **Navigation & Architecture**
+- **Expo Router** – File-system-based routing for clean, intuitive navigation.
+- **Bottom Tabs Navigator** – Simple, user-friendly tab navigation.
+
+### **State & Data Storage**
+- **AsyncStorage** – Local device persistence for subjects, grade planners, Pomodoro history, and theme settings.
+- **React Hooks** – State, memoization, and side-effects.
+
+### **UI & Theming**
+- **Custom Theme Provider** – Supports light and dark modes with soft color palettes.
+- **React Native Safe Area Context** – Proper layout handling across devices.
+- **Dynamic keyboard handling** – Automatic view resizing for text inputs.
+
+### **Device APIs**
+- **expo-constants** – Reads the app version for feedback emails.
+- **expo-linking** – Opens user email apps and external URLs (Buy Me a Coffee).
+
+### **Build & Deployment**
+- **Expo Application Services (EAS)** – Production AAB builds and development APKs.
+- **Google Play Store** – Distribution platform for Android users.
+
+### **Developer Tools**
+- **TypeScript (optional)** – Improved safety and maintainability.
+- **Hermes Engine** – Faster JS runtime with reduced APK size.
+
+
+# 📄 License
+
+Copyright (c) 2025 Luke Baldacchino
+
+All rights reserved.
+
+This application, including its source code, design, assets, and content, is the exclusive property of the copyright holder.
+
+Permission is granted to install and use the application for personal, non-commercial purposes.
+
+You may NOT:
+- modify, copy, distribute, sublicense, or create derivative works,
+- reuse or repurpose the source code,
+- reverse engineer, decompile, or extract components of the application,
+- use any part of this software in another application or project.
+
+This software is provided "as is" without warranty of any kind, express or implied.
