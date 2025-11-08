@@ -21,13 +21,27 @@ import { useTheme } from "../../theme/ThemeProvider";
 
 const BUY_ME_A_COFFEE_URL = "https://www.buymeacoffee.com/teraau";
 const FEEDBACK_EMAIL = "terabadau@gmail.com";
+const DISCORD_URL = "https://discord.gg/fvTgWbE6";
+const GITHUB_URL = "https://github.com/L-Baldacchino/GradePal";
 
-// ---------- helpers for email ----------
+// ---------- helpers ----------
 const enc = (v: string) => encodeURIComponent(v ?? "");
 
 async function appInstalled(scheme: string) {
   try {
     return await Linking.canOpenURL(scheme);
+  } catch {
+    return false;
+  }
+}
+
+async function openWithMailto(to: string, subject: string, body: string) {
+  const url = `mailto:${to}?subject=${enc(subject)}&body=${enc(body)}`;
+  try {
+    const can = await Linking.canOpenURL(url);
+    if (!can) return false;
+    await Linking.openURL(url);
+    return true;
   } catch {
     return false;
   }
@@ -55,23 +69,10 @@ async function openWithOutlook(to: string, subject: string, body: string) {
   }
 }
 
-async function openWithMailto(to: string, subject: string, body: string) {
-  const url = `mailto:${to}?subject=${enc(subject)}&body=${enc(body)}`;
-  try {
-    const can = await Linking.canOpenURL(url);
-    if (!can) return false;
-    await Linking.openURL(url); // Android shows chooser if multiple mail apps exist
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export default function SupportScreen() {
   const { theme } = useTheme();
   const s = makeStyles(theme);
 
-  // ✅ Real app version from app.json (works in Expo Go/dev/prod)
   const appVersion =
     Constants.expoConfig?.version ||
     Constants.manifest?.version ||
@@ -81,43 +82,16 @@ export default function SupportScreen() {
   const [email, setEmail] = useState("");
   const [subject, setSubject] = useState(`Feedback for Grade Pal v${appVersion}`);
 
-  const body = useMemo(() => {
-    const lines = [feedback.trim(), "", "—", `Contact: ${email.trim() || "N/A"}`];
-    return lines.join("\n");
-  }, [feedback, email]);
+  const body = useMemo(
+    () => [feedback.trim(), "", "—", `Contact: ${email.trim() || "N/A"}`].join("\n"),
+    [feedback, email]
+  );
 
-  const openCoffee = useCallback(async () => {
-    try {
-      const supported = await Linking.canOpenURL(BUY_ME_A_COFFEE_URL);
-      if (supported) await Linking.openURL(BUY_ME_A_COFFEE_URL);
-      else Alert.alert("Unable to open link", "Please try again later.");
-    } catch {
-      Alert.alert("Unable to open link", "Please try again later.");
-    }
-  }, []);
-
-  const resetAllData = useCallback(() => {
-    Alert.alert(
-      "Reset All Data",
-      "This will delete all saved subjects, grade planners, Pomodoro data, and theme preferences on this device. This cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Reset",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await AsyncStorage.clear();
-              Alert.alert("Data reset", "All app data has been cleared.");
-              router.replace("/");
-            } catch {
-              Alert.alert("Error", "Something went wrong clearing data.");
-            }
-          },
-        },
-      ]
-    );
-  }, []);
+  const openLink = async (url: string) => {
+    const supported = await Linking.canOpenURL(url);
+    if (supported) Linking.openURL(url);
+    else Alert.alert("Unable to open link", "Please try again later.");
+  };
 
   const sendFeedback = useCallback(async () => {
     if (!feedback.trim()) {
@@ -125,11 +99,9 @@ export default function SupportScreen() {
       return;
     }
 
-    // 1) Try standard mailto (chooser on Android if multiple apps exist)
     const viaMailto = await openWithMailto(FEEDBACK_EMAIL, subject.trim(), body);
     if (viaMailto) return;
 
-    // 2) Manual choices
     const hasGmail = await appInstalled("googlegmail://");
     const hasOutlook = await appInstalled("ms-outlook://");
 
@@ -140,7 +112,7 @@ export default function SupportScreen() {
         text: "Gmail",
         onPress: async () => {
           const ok = await openWithGmail(FEEDBACK_EMAIL, subject.trim(), body);
-          if (!ok) Alert.alert("Could not open Gmail", "Try Outlook or another mail app.");
+          if (!ok) Alert.alert("Could not open Gmail");
         },
       });
     }
@@ -150,7 +122,7 @@ export default function SupportScreen() {
         text: "Outlook",
         onPress: async () => {
           const ok = await openWithOutlook(FEEDBACK_EMAIL, subject.trim(), body);
-          if (!ok) Alert.alert("Could not open Outlook", "Try Gmail or another mail app.");
+          if (!ok) Alert.alert("Could not open Outlook");
         },
       });
     }
@@ -159,92 +131,140 @@ export default function SupportScreen() {
       text: Platform.OS === "android" ? "System chooser" : "Default Mail",
       onPress: async () => {
         const ok = await openWithMailto(FEEDBACK_EMAIL, subject.trim(), body);
-        if (!ok) Alert.alert("No email app available", `Please email ${FEEDBACK_EMAIL} using your preferred client.`);
+        if (!ok) Alert.alert("No email app available");
       },
     });
-
-    if (!hasGmail && !hasOutlook) {
-      Alert.alert("No email app available", `Please email ${FEEDBACK_EMAIL} using your preferred client.`);
-      return;
-    }
 
     Alert.alert("Send feedback with…", "Choose an app:", [...options, { text: "Cancel", style: "cancel" }]);
   }, [feedback, subject, body]);
 
+  const resetAllData = useCallback(() => {
+    Alert.alert(
+      "Reset All Data",
+      "This will delete all subjects, Pomodoro logs, and settings. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Reset",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await AsyncStorage.clear();
+              Alert.alert("Data reset", "All app data cleared.");
+              router.replace("/");
+            } catch {
+              Alert.alert("Error", "Could not clear data");
+            }
+          },
+        },
+      ]
+    );
+  }, []);
+
   return (
-    <SafeAreaView style={[s.screen]} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={[s.screen]} edges={["top", "left", "right"]}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.select({ ios: 0, android: 0 })} // stack header hidden, so zero offset
       >
         <ScrollView
           style={{ flex: 1 }}
-          contentInsetAdjustmentBehavior="automatic"
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
         >
-          {/* Why I built this */}
+          {/* ✅ 1. Why I built this */}
           <View style={s.card}>
             <Text style={s.title}>Why I built this</Text>
             <Text style={s.body}>
-              I started this app to make it effortless for uni students to see exactly what percentage they need to pass
-              a subject. Add your own assessments, track grades, and instantly see your accumulated result. It’s
-              lightweight, distraction-free, and built to help when you need it most.
+              I built this app to help uni students understand exactly what they
+              need to pass a subject—quickly, clearly, and without stress.
             </Text>
           </View>
 
-          {/* Support the project */}
+          {/* ✅ 2. Discord */}
           <View style={s.card}>
-            <Text style={s.title}>Support the project</Text>
+            <Text style={s.title}>Join the community</Text>
             <Text style={s.body}>
-              If this app helped you, you can buy me a coffee. Your support keeps the project alive and encourages new
-              features. Please note that this is entirely optional, the app will always be free to use.
+              Join the Tera Apps Community Discord to get updates, request
+              features, report bugs, and connect with other students.
             </Text>
 
-            <Pressable onPress={openCoffee} style={[s.ctaBtn, { backgroundColor: theme.primary }]}>
-              <Ionicons name="cafe" size={18} color={theme.primaryText} />
-              <Text style={[s.ctaText, { color: theme.primaryText }]}>Buy me a coffee</Text>
+            <Pressable
+              onPress={() => openLink(DISCORD_URL)}
+              style={[s.ctaBtn, { backgroundColor: "#5865F2" }]}
+            >
+              <Ionicons name="logo-discord" size={20} color="#fff" />
+              <Text style={[s.ctaText, { color: "#fff" }]}>Join Discord</Text>
             </Pressable>
           </View>
 
-          {/* Feedback */}
+          {/* ✅ 3. GitHub */}
+          <View style={s.card}>
+            <Text style={s.title}>GitHub Repository</Text>
+            <Text style={s.body}>
+              Want to report an issue or view the project source code? Visit the
+              official GitHub repository.
+            </Text>
+
+            <Pressable
+              onPress={() => openLink(GITHUB_URL)}
+              style={[s.ctaBtn, { backgroundColor: "#24292F" }]}
+            >
+              <Ionicons name="logo-github" size={20} color="#fff" />
+              <Text style={[s.ctaText, { color: "#fff" }]}>View on GitHub</Text>
+            </Pressable>
+          </View>
+
+          {/* ✅ 4. Support the project */}
+          <View style={s.card}>
+            <Text style={s.title}>Support the project</Text>
+            <Text style={s.body}>
+              If the app helped you, consider buying me a coffee. It keeps the
+              project alive and supports future development. Please note that this application will always be free to use!
+            </Text>
+
+            <Pressable
+              onPress={() => openLink(BUY_ME_A_COFFEE_URL)}
+              style={[s.ctaBtn, { backgroundColor: theme.primary }]}
+            >
+              <Ionicons name="cafe" size={18} color={theme.primaryText} />
+              <Text style={[s.ctaText, { color: theme.primaryText }]}>
+                Buy me a coffee
+              </Text>
+            </Pressable>
+          </View>
+
+          {/* ✅ 5. Feedback */}
           <View style={s.card}>
             <Text style={s.title}>Send feedback</Text>
-            <Text style={s.body}>Found a bug, have an idea, or just want to say thanks? I’d love to hear it.</Text>
 
             <Text style={s.label}>Subject</Text>
             <TextInput
               value={subject}
               onChangeText={setSubject}
+              style={s.input}
               placeholder={`Feedback for Grade Pal v${appVersion}`}
               placeholderTextColor={theme.textMuted}
-              style={s.input}
-              returnKeyType="next"
             />
 
-            <Text style={[s.label, { marginTop: 10 }]}>Your email (optional)</Text>
+            <Text style={s.label}>Your email (optional)</Text>
             <TextInput
               value={email}
               onChangeText={setEmail}
+              style={s.input}
               placeholder="you@uni.edu.au"
               placeholderTextColor={theme.textMuted}
-              style={s.input}
               keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="next"
             />
 
-            <Text style={[s.label, { marginTop: 10 }]}>Message</Text>
+            <Text style={s.label}>Message</Text>
             <TextInput
               value={feedback}
               onChangeText={setFeedback}
+              style={[s.input, s.textarea]}
               placeholder="Write your feedback here…"
               placeholderTextColor={theme.textMuted}
-              style={[s.input, s.textarea]}
               multiline
-              textAlignVertical="top"
             />
 
             <Pressable
@@ -253,17 +273,20 @@ export default function SupportScreen() {
               disabled={!feedback.trim()}
             >
               <Ionicons name="mail" size={18} color={theme.primaryText} />
-              <Text style={[s.ctaText, { color: theme.primaryText }]}>Send feedback</Text>
+              <Text style={[s.ctaText, { color: theme.primaryText }]}>
+                Send feedback
+              </Text>
             </Pressable>
           </View>
 
-          {/* Danger zone */}
+          {/* ✅ 6. Danger zone */}
           <View style={s.card}>
             <Text style={s.title}>Danger zone</Text>
             <Text style={s.body}>
-              Need a fresh start? This removes all subjects, per-subject grade planners, Pomodoro data, and theme
-              preferences stored on this device.
+              This will remove all saved data including your subjects, grade
+              planners, Pomodoro logs, and settings.
             </Text>
+
             <Pressable onPress={resetAllData} style={s.dangerBtn}>
               <Ionicons name="trash" size={18} color="#fff" />
               <Text style={s.dangerText}>Reset all data</Text>
@@ -271,8 +294,7 @@ export default function SupportScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-      {/* Bottom inset safe area (keeps content away from home indicator on iOS) */}
-      <SafeAreaView edges={['bottom']} style={{ backgroundColor: theme.bg }} />
+      <SafeAreaView edges={["bottom"]} style={{ backgroundColor: theme.bg }} />
     </SafeAreaView>
   );
 }
@@ -301,9 +323,7 @@ const makeStyles = (t: any) =>
       paddingVertical: 10,
       fontSize: 14,
     },
-    textarea: {
-      minHeight: 120,
-    },
+    textarea: { minHeight: 120 },
     ctaBtn: {
       marginTop: 12,
       paddingVertical: 12,
@@ -324,5 +344,9 @@ const makeStyles = (t: any) =>
       gap: 8,
       backgroundColor: "#E25563",
     },
-    dangerText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+    dangerText: {
+      color: "#fff",
+      fontWeight: "700",
+      fontSize: 15,
+    },
   });
