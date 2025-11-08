@@ -1,7 +1,12 @@
 // app/grade-planner/[subject].tsx
+
+// Persistent storage for assessment lists
 import AsyncStorage from "@react-native-async-storage/async-storage";
+// Hook to pull the subject code from the URL
 import { useLocalSearchParams, useNavigation } from "expo-router";
+// Core React hooks
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+// UI + RN utilities
 import {
   Alert,
   KeyboardAvoidingView,
@@ -15,10 +20,18 @@ import {
   TextInput,
   View,
 } from "react-native";
+// Smart FlatList that moves content above the keyboard automatically
 import { KeyboardAwareFlatList } from "react-native-keyboard-aware-scroll-view";
+// Safe area helpers
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+// Theme (colors, fonts, etc.)
 import { useTheme } from "../../theme/ThemeProvider";
 
+// -------------------------------
+// Types and helpers
+// -------------------------------
+
+// Each assessment item stored per subject
 export type Assessment = {
   id: string;
   name: string;
@@ -27,39 +40,53 @@ export type Assessment = {
   type?: "Assignment" | "Exam" | "Other";
 };
 
+// Default template used only for *new* subjects on the first load
 const seed: Assessment[] = [
   { id: "a1", name: "Assignment 1", weight: "20", grade: "", type: "Assignment" },
   { id: "a2", name: "Assignment 2", weight: "30", grade: "", type: "Assignment" },
   { id: "exam", name: "Exam", weight: "50", grade: "", type: "Exam" },
 ];
 
+// Convert string → number safely
 function toNum(s?: string) {
   const n = Number((s ?? "").toString().replace(/,/g, "."));
   return isNaN(n) ? 0 : n;
 }
+
+// Clamp number to a safe range
 function clamp(n: number, lo = 0, hi = 100) {
   return Math.max(lo, Math.min(hi, n));
 }
 
+// -------------------------------
+// Main component
+// -------------------------------
 export default function SubjectPlannerScreen() {
   const { theme } = useTheme();
   const s = makeStyles(theme);
+
+  // Get subject code from URL (e.g. /grade-planner/CSE3MAD)
   const { subject } = useLocalSearchParams<{ subject: string }>();
   const nav = useNavigation();
   const insets = useSafeAreaInsets();
 
+  // Standardise the subject code
   const code = decodeURIComponent(subject ?? "").toUpperCase();
   const STORAGE_KEY = `grade-planner:${code}`;
 
+  // Planner contents
   const [items, setItems] = useState<Assessment[]>(seed);
+
+  // Controls “Add Assessment” modal visibility
   const [showAdd, setShowAdd] = useState(false);
 
-  // Footer height measured so we can pad list bottom correctly
+  // Bottom padding tracking
   const [footerH, setFooterH] = useState(72);
 
-  // FlatList ref (no generic to avoid type issues)
+  // Reference to the FlatList (used for scrolling)
   const listRef = useRef<any>(null);
 
+  // Configure the header when the page loads
   useLayoutEffect(() => {
     nav.setOptions({
       title: `Grade Planner • ${code}`,
@@ -69,7 +96,9 @@ export default function SubjectPlannerScreen() {
     });
   }, [nav, code, theme]);
 
-  // Load/save
+  // -------------------------------
+  // Load saved planner (runs once)
+  // -------------------------------
   useEffect(() => {
     (async () => {
       try {
@@ -82,13 +111,18 @@ export default function SubjectPlannerScreen() {
     })();
   }, [STORAGE_KEY]);
 
+  // Persist every time the items array changes
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ items })).catch(() => {});
   }, [items, STORAGE_KEY]);
 
-  // Stats
+  // -------------------------------
+  // Stats for the banner
+  // -------------------------------
   const { sumContribution, totalWeight } = useMemo(() => {
     const totalWeight = items.reduce((acc, i) => acc + clamp(toNum(i.weight)), 0);
+
+    // Sum the weighted contributions
     const contributions = items
       .map((i) => {
         const w = clamp(toNum(i.weight));
@@ -96,32 +130,40 @@ export default function SubjectPlannerScreen() {
         return g === null ? 0 : (w * g) / 100;
       })
       .reduce((a, b) => a + b, 0);
+
     return { sumContribution: contributions, totalWeight };
   }, [items]);
 
   const isPerfect = Math.abs(totalWeight - 100) < 0.01;
 
+  // -------------------------------
+  // Mutations for assessments
+  // -------------------------------
   function updateItem(id: string, patch: Partial<Assessment>) {
     setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)));
   }
+
   function removeItem(id: string) {
     setItems((prev) => prev.filter((it) => it.id !== id));
   }
+
   function addItem(newItem: Assessment) {
     setItems((prev) => [...prev, newItem]);
   }
 
-  // List padding: room for footer + safe area. KeyboardAwareFlatList handles keyboard.
+  // Space at bottom so list content never hides behind modal/footer
   const listBottomPad = insets.bottom + footerH + 24;
 
-  // Footer
+  // -------------------------------
+  // Footer (Add button + total weight)
+  // -------------------------------
   const Footer = (
     <View
       style={[s.footer, { paddingBottom: insets.bottom + 8 }]}
       onLayout={(e: LayoutChangeEvent) => setFooterH(e.nativeEvent.layout.height)}
     >
       <View style={s.bottomRowEven}>
-        {/* Add item */}
+        {/* Add item button */}
         <View style={s.bottomItem}>
           <Pressable
             onPress={() => setShowAdd(true)}
@@ -131,7 +173,7 @@ export default function SubjectPlannerScreen() {
           </Pressable>
         </View>
 
-        {/* Total weighting pill */}
+        {/* Total weighting indicator */}
         <View style={[s.bottomItem, { alignItems: "center" }]}>
           <View
             style={[
@@ -148,6 +190,9 @@ export default function SubjectPlannerScreen() {
     </View>
   );
 
+  // -------------------------------
+  // Main layout
+  // -------------------------------
   return (
     <SafeAreaView style={[s.screen]} edges={["top", "left", "right"]}>
       <KeyboardAwareFlatList
@@ -157,7 +202,7 @@ export default function SubjectPlannerScreen() {
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
         enableOnAndroid
-        extraScrollHeight={280}        // lifts focused input well above keyboard
+        extraScrollHeight={280} // ensures inputs never sit behind the keyboard
         enableAutomaticScroll
         contentContainerStyle={{ padding: 16, paddingBottom: listBottomPad }}
         ListHeaderComponent={
@@ -169,6 +214,7 @@ export default function SubjectPlannerScreen() {
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
         renderItem={({ item }) => (
           <View style={s.card}>
+            {/* Assessment name */}
             <TextInput
               value={item.name}
               onChangeText={(t) => updateItem(item.id, { name: t })}
@@ -179,6 +225,7 @@ export default function SubjectPlannerScreen() {
               blurOnSubmit={false}
             />
 
+            {/* Weight + Grade */}
             <View style={s.row}>
               <View style={{ width: 96, flexGrow: 1 }}>
                 <Text style={s.label}>Weight %</Text>
@@ -193,6 +240,7 @@ export default function SubjectPlannerScreen() {
                   blurOnSubmit={false}
                 />
               </View>
+
               <View style={{ width: 120, flexGrow: 1 }}>
                 <Text style={s.label}>Grade %</Text>
                 <TextInput
@@ -207,6 +255,7 @@ export default function SubjectPlannerScreen() {
               </View>
             </View>
 
+            {/* Per-item footer */}
             <View style={s.cardFooter}>
               <Text style={s.smallMuted}>Type: {item.type ?? "Other"}</Text>
               <Text style={s.small}>
@@ -214,6 +263,7 @@ export default function SubjectPlannerScreen() {
               </Text>
             </View>
 
+            {/* Remove button */}
             <View style={[s.row, { marginTop: 12 }]}>
               <Pressable onPress={() => removeItem(item.id)} style={[s.smallBtn, { backgroundColor: theme.danger }]}>
                 <Text style={s.smallBtnText}>Remove</Text>
@@ -224,17 +274,19 @@ export default function SubjectPlannerScreen() {
         ListFooterComponent={Footer}
       />
 
-      {/* Add item modal (keyboard-safe) */}
+      {/* --------------------------------------------------
+          Add item modal (keyboard-aware)
+          -------------------------------------------------- */}
       <Modal visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
         <SafeAreaView style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)" }} edges={["top"]}>
           <KeyboardAvoidingView
             style={{ flex: 1 }}
             behavior={Platform.OS === "ios" ? "padding" : "height"}
-            keyboardVerticalOffset={0}
           >
             <View style={{ flex: 1, justifyContent: "flex-end" }}>
               <View style={s.modalCard}>
                 <Text style={s.modalTitle}>Add assessment</Text>
+
                 <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 8 }}>
                   <AddForm
                     onCancel={() => setShowAdd(false)}
@@ -249,26 +301,35 @@ export default function SubjectPlannerScreen() {
           </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
+
+      {/* bottom safe area */}
       <SafeAreaView edges={["bottom"]} style={{ backgroundColor: theme.bg }} />
     </SafeAreaView>
   );
 }
 
+// -------------------------------
+// Add-item modal form
+// -------------------------------
 function AddForm({ onCancel, onAdd }: { onCancel: () => void; onAdd: (a: Assessment) => void }) {
   const { theme } = useTheme();
   const s = makeStyles(theme);
+
+  // Local form fields
   const [name, setName] = useState("");
   const [weight, setWeight] = useState("");
   const [grade, setGrade] = useState("");
 
-  // focus chain so next field is never hidden
+  // Helps keep keyboard navigation smooth
   const weightRef = React.useRef<TextInput>(null);
   const gradeRef = React.useRef<TextInput>(null);
 
   function submit() {
     if (!name.trim()) return Alert.alert("Name required");
     if (!weight.trim()) return Alert.alert("Weight % required");
+
     const id = `${Date.now()}`;
+
     onAdd({
       id,
       name: name.trim(),
@@ -293,6 +354,7 @@ function AddForm({ onCancel, onAdd }: { onCancel: () => void; onAdd: (a: Assessm
           onSubmitEditing={() => weightRef.current?.focus()}
         />
       </View>
+
       <View style={[s.row, { marginBottom: 16 }]}>
         <View style={{ flex: 1 }}>
           <Text style={s.label}>Weight %</Text>
@@ -310,6 +372,7 @@ function AddForm({ onCancel, onAdd }: { onCancel: () => void; onAdd: (a: Assessm
             onSubmitEditing={() => gradeRef.current?.focus()}
           />
         </View>
+
         <View style={{ flex: 1 }}>
           <Text style={s.label}>Grade % (optional)</Text>
           <TextInput
@@ -331,6 +394,7 @@ function AddForm({ onCancel, onAdd }: { onCancel: () => void; onAdd: (a: Assessm
         <Pressable onPress={onCancel} style={[s.neutralBtn, { backgroundColor: theme.border }]}>
           <Text style={s.neutralBtnText}>Cancel</Text>
         </Pressable>
+
         <Pressable onPress={submit} style={[s.primaryBtn, { backgroundColor: theme.primary }]}>
           <Text style={[s.primaryBtnText, { color: theme.primaryText }]}>Add</Text>
         </Pressable>
@@ -339,13 +403,14 @@ function AddForm({ onCancel, onAdd }: { onCancel: () => void; onAdd: (a: Assessm
   );
 }
 
+// -------------------------------
+// Styles
+// -------------------------------
 const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: t.bg },
 
     banner: {
-      marginTop: 0,
-      marginHorizontal: 0,
       marginBottom: 12,
       paddingHorizontal: 16,
       paddingVertical: 14,
@@ -357,7 +422,14 @@ const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
     bannerLabel: { color: t.textMuted, fontSize: 12, fontWeight: "600", marginBottom: 2 },
     bannerValue: { color: t.success, fontSize: 28, fontWeight: "800" },
 
-    card: { borderRadius: 16, padding: 16, backgroundColor: t.card, borderColor: t.border, borderWidth: 1 },
+    card: {
+      borderRadius: 16,
+      padding: 16,
+      backgroundColor: t.card,
+      borderColor: t.border,
+      borderWidth: 1,
+    },
+
     input: {
       color: t.text,
       borderColor: t.border,
@@ -368,11 +440,20 @@ const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
       backgroundColor: t.card,
       fontSize: 16,
     },
+
     inputText: { color: t.text, fontSize: 16 },
+
     label: { color: t.textMuted, fontSize: 12, marginBottom: 4 },
+
     row: { flexDirection: "row", columnGap: 12 },
 
-    cardFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 12 },
+    cardFooter: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginTop: 12,
+    },
+
     small: { color: t.text, fontSize: 12 },
     smallMuted: { color: t.textMuted, fontSize: 12 },
 
@@ -388,11 +469,24 @@ const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
       borderRadius: 12,
       marginTop: 12,
     },
-    bottomRowEven: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", columnGap: 12 },
+
+    bottomRowEven: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      columnGap: 12,
+    },
+
     bottomItem: { flex: 1 },
     fullWidthBtn: { width: "100%", alignItems: "center" },
 
-    weightPill: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14, borderWidth: 1, backgroundColor: t.card },
+    weightPill: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 14,
+      borderWidth: 1,
+      backgroundColor: t.card,
+    },
     weightPillText: { fontSize: 14, fontWeight: "600" },
 
     modalCard: {
@@ -408,6 +502,7 @@ const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
 
     primaryBtn: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, alignItems: "center" },
     primaryBtnText: { fontWeight: "700" },
+
     neutralBtn: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, alignItems: "center" },
     neutralBtnText: { color: t.text },
   });

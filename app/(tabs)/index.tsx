@@ -1,5 +1,8 @@
 // app/(tabs)/index.tsx
+
+// Persist subjects locally so they survive app restarts
 import AsyncStorage from "@react-native-async-storage/async-storage";
+// Lightweight navigation link into the per-subject grade planner screen
 import { Link } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -11,24 +14,28 @@ import {
   TextInput,
   View,
 } from "react-native";
+// Theming hook so colors adapt to light/dark palettes
 import { useTheme } from "../../theme/ThemeProvider";
 
+// Simple shape for a subject row on the home screen
 type Subject = {
   code: string;
   name: string;
 };
 
+// Where we store the subjects list in AsyncStorage
 const STORAGE_KEY = "subjects-list:v1";
 
 export default function SubjectsScreen() {
   const { theme } = useTheme();
   const s = makeStyles(theme);
 
+  // Local state for the list and the form inputs
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
 
-  // Load saved subjects
+  // Load saved subjects once when the screen mounts
   useEffect(() => {
     (async () => {
       try {
@@ -38,11 +45,12 @@ export default function SubjectsScreen() {
     })();
   }, []);
 
-  // Save on change
+  // Persist changes whenever the list updates
   useEffect(() => {
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(subjects)).catch(() => {});
   }, [subjects]);
 
+  // Add a subject row, with basic validation and duplicate-code guard
   const addSubject = () => {
     if (!code.trim() || !name.trim()) {
       Alert.alert("Missing info", "Please enter both code and name.");
@@ -65,6 +73,7 @@ export default function SubjectsScreen() {
     setName("");
   };
 
+  // Remove a subject after a quick confirmation
   const removeSubject = (code: string) => {
     Alert.alert("Remove Subject", `Are you sure you want to remove ${code}?`, [
       { text: "Cancel" },
@@ -74,12 +83,13 @@ export default function SubjectsScreen() {
 
   return (
     <View style={[s.screen]}>
+      {/* Page heading + short explainer */}
       <Text style={s.title}>Subjects</Text>
       <Text style={s.subtitle}>Add your units, then tap to open each calculator.</Text>
 
       <View style={s.divider} />
 
-      {/* Input Fields */}
+      {/* Inline add form: subject code on the left, name on the right, and an Add button */}
       <View style={s.row}>
         <TextInput
           value={code}
@@ -104,7 +114,9 @@ export default function SubjectsScreen() {
         </Pressable>
       </View>
 
-      {/* Subject List */}
+      {/* Subjects list
+          - Tapping a row navigates into that subject's planner
+          - Remove button sits on the right side */}
       <FlatList
         data={subjects}
         keyExtractor={(item) => item.code}
@@ -131,6 +143,7 @@ export default function SubjectsScreen() {
   );
 }
 
+// Styles read from theme so the page follows light/dark automatically
 const makeStyles = (t: any) =>
   StyleSheet.create({
     screen: {
@@ -161,6 +174,7 @@ const makeStyles = (t: any) =>
       gap: 10,
       marginBottom: 18,
     },
+    // Compact inputs so all three controls comfortably fit on one row
     inputCompact: {
       minHeight: 48,
       paddingHorizontal: 14,
@@ -173,6 +187,7 @@ const makeStyles = (t: any) =>
       fontSize: 14,
       flexShrink: 1,
     },
+    // Each subject row card
     subjectCard: {
       backgroundColor: t.card,
       borderColor: t.border,
@@ -183,16 +198,19 @@ const makeStyles = (t: any) =>
       flexDirection: "row",
       alignItems: "center",
     },
+    // Bold code (e.g., CSE3MAD)
     subjectCode: {
       color: t.text,
       fontWeight: "700",
       fontSize: 15,
     },
+    // Lighter title that follows the en dash
     subjectName: {
       color: t.textMuted,
       fontSize: 15,
       fontWeight: "400",
     },
+    // Small destructive button on the right
     removeBtn: {
       backgroundColor: t.border,
       borderRadius: 12,
@@ -205,6 +223,7 @@ const makeStyles = (t: any) =>
       fontSize: 13,
       fontWeight: "600",
     },
+    // Primary “Add” button next to the inputs
     primaryBtn: {
       height: 48,
       borderRadius: 14,
