@@ -68,6 +68,11 @@ export default function PomodoroScreen() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   // Anti-double-log guard when alert resolves quickly
   const justLoggedRef = useRef<number>(0);
+  // Live phase ref so the interval reads the current phase (avoids stale closures)
+  const onBreakRef = useRef(onBreak);
+  useEffect(() => {
+    onBreakRef.current = onBreak;
+  }, [onBreak]);
 
   // ---------- storage loaders ----------
   // Pull subjects and remember last selected subject if still valid
@@ -135,6 +140,7 @@ export default function PomodoroScreen() {
   // Reset either focus or break phase based on flag
   const resetPhase = (isBreak: boolean) => {
     setOnBreak(isBreak);
+    onBreakRef.current = isBreak; // keep ref in sync immediately
     const mins = isBreak ? getBreakMinutes() : getStudyMinutes();
     setRemainingSec(mins * 60);
   };
@@ -154,27 +160,30 @@ export default function PomodoroScreen() {
     await saveLog(next);
   };
 
-  // Start ticking the timer (includes end-of-phase alert + break flow)
+  // Start ticking the timer (includes end-of-phase alerts for focus and break)
   const start = () => {
     if (running) return;
     if (remainingSec <= 0) resetPhase(false);
     setRunning(true);
+
     timerRef.current = setInterval(() => {
       setRemainingSec((prev) => {
         if (prev <= 1) {
-          const wasFocus = !onBreak;
+          const wasFocus = !onBreakRef.current;
 
           if (wasFocus) {
-            // Focus finished → pause, log, and ask the user if they want the break to begin
+            // Focus finished → pause, log, and ask to start the break (or skip it)
             stop();
             logFocusCompletion(getStudyMinutes());
+
             Alert.alert("Nice work!", "Focus session complete. Ready for your break?", [
               {
                 text: "Start break",
                 onPress: () => {
                   setOnBreak(true);
+                  onBreakRef.current = true;
                   setRemainingSec(getBreakMinutes() * 60);
-                  start();
+                  start(); // resume ticking for the break phase
                 },
               },
               {
@@ -182,17 +191,43 @@ export default function PomodoroScreen() {
                 style: "cancel",
                 onPress: () => {
                   setOnBreak(false);
-                  setRemainingSec(getStudyMinutes() * 60);
+                  onBreakRef.current = false;
+                  setRemainingSec(getStudyMinutes() * 60); // remain paused; user can hit Start
                 },
               },
             ]);
-            return 0;
+
+            return 0; // freeze display at 00:00 until next action
           }
 
-          // Break finished → auto switch to focus again
-          setOnBreak(false);
-          return getStudyMinutes() * 60;
+          // Break finished → pause and ask whether to start another focus or skip focus
+          stop();
+
+          Alert.alert("Break finished", "Start another focus session?", [
+            {
+              text: "Start focus",
+              onPress: () => {
+                setOnBreak(false);
+                onBreakRef.current = false;
+                setRemainingSec(getStudyMinutes() * 60);
+                start(); // resume with focus phase
+              },
+            },
+            {
+              text: "Skip focus",
+              style: "cancel",
+              onPress: () => {
+                // Extend rest: keep in break mode and start another break immediately
+                setOnBreak(true);
+                onBreakRef.current = true;
+                setRemainingSec(getBreakMinutes() * 60);
+              },
+            },
+          ]);
+
+          return 0; // freeze at 00:00 until user picks an option
         }
+
         return prev - 1;
       });
     }, 1000);
