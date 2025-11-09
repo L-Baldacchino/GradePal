@@ -11,7 +11,6 @@ Grade Pal is a clean, modern mobile app designed specifically for university stu
 - Instantly see their accumulated grade
 - Calculate how much they need to pass
 - Stay productive using a built-in Pomodoro timer
-- Support development by sending feedback or donating
   
 The app focuses on clarity, lightweight functionality, and zero distractions.
 
@@ -41,8 +40,6 @@ Inside the server you’ll find:
 - 📢 App updates and announcements
 - ❓ Help from the developer and community
 
-Feedback is directly built into the app, but you can also reach me here:
-- 📨 terabadau@gmail.com
 
 _____________________________________________________
 
