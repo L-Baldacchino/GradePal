@@ -80,9 +80,8 @@ Stay productive using a clean, focused Pomodoro timer:
 Inside the Support tab, students can:
 - Read why the app was built
 - Donate via Buy Me a Coffee
-- Send feedback directly from the app (email)
-- Email subject auto-includes app version
-- Works with Gmail, Outlook, and system chooser
+- Join the Discord community
+- View Github repo
 - Reset all saved data across the entire app
 
 ## 🎨 Theme Support
