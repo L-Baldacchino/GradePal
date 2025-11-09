@@ -1,0 +1,97 @@
+📄 Privacy Policy for Grade Pal
+
+Last updated: 09 November 2025
+Developer: Luke Baldacchino / Tera Apps
+
+1. Introduction
+
+Grade Pal (“the App”) is a study-support tool designed to help students track assessment weightings, calculate grades, and manage study sessions.
+This Privacy Policy explains how the App handles user data, including what information is collected, stored, or transmitted.
+
+By using the App, you agree to the terms outlined in this policy.
+
+2. Information We Collect
+2.1. No Personal Information Collected
+
+Grade Pal does not collect, store, or transmit any personally identifiable information (PII).
+
+2.2. Local-Only Data
+
+All app data is stored locally on your device only, including:
+- Subjects and assessment details
+- Grades and results
+- Pomodoro logs
+- Theme preferences
+
+This information never leaves your device unless you choose to export or share it manually.
+
+2.3. Audio Permission (RECORD_AUDIO)
+
+The App requests the Android permission:
+
+android.permission.RECORD_AUDIO
+
+This is required exclusively for:
+
+✅ Allowing optional haptic/audio feedback in the Pomodoro timer
+✅ Supporting optional features such as sound-based alerts or future accessibility functions
+
+The App does NOT:
+
+❌ Record conversations
+❌ Upload audio
+❌ Store audio
+❌ Transmit audio
+❌ Use audio for analytics, speech recognition, or profiling
+
+Audio is handled only in real-time on the device for timer-alert functionality.
+No audio is saved or shared at any point.
+
+3. Third-Party Services
+
+Grade Pal does not integrate with any third-party services that collect user data.
+
+The only third-party interactions are:
+
+✅ Opening external links
+- Discord (community support)
+- GitHub (open source transparency)
+- Buy Me a Coffee (donations)
+These links open externally, and their privacy policies apply when used.
+
+4. Data Sharing
+Grade Pal does not share any data with:
+- Advertisers
+- Analytics providers
+- Third parties
+- Any external servers or databases
+
+The App is completely offline-first.
+
+5. Data Security
+Because all data is stored locally on your device:
+- You control your own data
+- Data exists only in local storage
+- Deleting the app or using the “Reset All Data” option removes all stored information permanently
+No cloud storage is used.
+
+6. Children’s Privacy
+Grade Pal is suitable for users aged 13+ and collects no personal data.
+
+7. Your Rights
+Since no personal data is collected:
+- There is no stored account to delete
+- There is no data profile to export
+- All data is managed directly on your device
+
+You may delete all app data anytime through the in-app Danger Zone → Reset All Data option.
+
+8. Changes to This Policy
+
+This Privacy Policy may be updated as features change.
+You will be notified of major updates through the app or via release notes.
+
+9. Contact
+For questions, support, or concerns:
+💬 Discord: Tera Apps Community - https://discord.gg/ngGYjU2N
+🌐 GitHub: https://github.com/L-Baldacchino/GradePal
