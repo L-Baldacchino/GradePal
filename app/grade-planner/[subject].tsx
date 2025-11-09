@@ -42,9 +42,9 @@ export type Assessment = {
 
 // Default template used only for *new* subjects on the first load
 const seed: Assessment[] = [
-  { id: "a1", name: "Assignment 1", weight: "20", grade: "", type: "Assignment" },
-  { id: "a2", name: "Assignment 2", weight: "30", grade: "", type: "Assignment" },
-  { id: "exam", name: "Exam", weight: "50", grade: "", type: "Exam" },
+  { id: "a1", name: "Assignment 1", weight: "20", grade: "" },
+  { id: "a2", name: "Assignment 2", weight: "30", grade: "" },
+  { id: "exam", name: "Exam", weight: "50", grade: ""},
 ];
 
 // Convert string → number safely
@@ -257,7 +257,7 @@ export default function SubjectPlannerScreen() {
 
             {/* Per-item footer */}
             <View style={s.cardFooter}>
-              <Text style={s.smallMuted}>Type: {item.type ?? "Other"}</Text>
+              <Text style={s.smallMuted}></Text>
               <Text style={s.small}>
                 Contribution: {(((toNum(item.weight) * toNum(item.grade)) / 100) || 0).toFixed(1)}%
               </Text>
