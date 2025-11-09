@@ -23,6 +23,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 // Theme hook (colors, backgrounds, etc.) shared across the app
 import { useTheme } from "../../theme/ThemeProvider";
+// Access version number from app.json / app.config.js
+import Constants from "expo-constants";
 
 /** External links */
 // Discord invite (feedback & community live here)
@@ -62,6 +64,12 @@ export default function SupportScreen() {
   // Grab theme colors and build styles from them
   const { theme } = useTheme();
   const s = makeStyles(theme);
+
+  // Extract app version number displayed at bottom of this page
+  const appVersion =
+    Constants.expoConfig?.version ||
+    Constants.manifest?.version ||
+    "1.0.0";
 
   // Button handlers for external links
   const openDiscord = useCallback(() => safeOpenUrl(DISCORD_URL), []);
@@ -174,6 +182,14 @@ export default function SupportScreen() {
             <Ionicons name="trash" size={18} color="#fff" />
             <Text style={s.dangerText}>Reset all data</Text>
           </Pressable>
+        </View>
+
+        {/* ✅ 6) App version label
+            Simple, small footer text so users know what version they're running. */}
+        <View style={{ marginTop: 12, alignItems: "center", opacity: 0.6 }}>
+          <Text style={{ color: theme.textMuted, fontSize: 12 }}>
+            Version {appVersion}
+          </Text>
         </View>
       </ScrollView>
 
