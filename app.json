@@ -2,7 +2,7 @@
   "expo": {
     "name": "Grade Pal",
     "slug": "ExamCalculator",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "scheme": "examcalculator",
     "icon": "./assets/images/icon.png",
@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "1"
+      "buildNumber": "2"
     },
     "android": {
       "softwareKeyboardLayoutMode": "resize",
@@ -26,7 +26,7 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.l.baldacchino.GradePal",
-      "versionCode": 1
+      "versionCode": 2
     },
     "web": {
       "output": "static",
