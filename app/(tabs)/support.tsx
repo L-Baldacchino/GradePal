@@ -119,7 +119,7 @@ export default function SupportScreen() {
             see your accumulated result. It’s simple, fast, and built for focus.
             {"\n\n"}As a uni student myself, I built Grade Pal to solve my own struggles with tracking grades, 
             and understanding what % I need for a final exam. I hope it helps you too!
-            {"\n\n"}Luke Baldacchino
+            {"\n\n"}Luke Baldacchino {"\n"}Creator - Grade Pal{"\n"}❤️
           </Text>
         </View>
 
@@ -144,7 +144,7 @@ export default function SupportScreen() {
         <View style={s.card}>
           <Text style={s.title}>GitHub Repository</Text>
           <Text style={s.body}>
-            Want to view the source code, star the project, or report an issue on GitHub?
+            Want to view the source code, star the project, or download via GitHub?
             You’ll find everything here.
           </Text>
 
@@ -175,7 +175,7 @@ export default function SupportScreen() {
           <Text style={s.title}>Danger zone</Text>
           <Text style={s.body}>
             Need a fresh start? This removes all subjects, per-subject grade planners, Pomodoro logs,
-            and theme preferences stored on this device.
+            and theme preferences stored on this device. Please refresh the app to see the changes.
           </Text>
 
           <Pressable onPress={resetAllData} style={s.dangerBtn}>
