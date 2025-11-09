@@ -49,7 +49,7 @@ export default function TabsLayout() {
         headerTintColor: theme.navText,
 
         // Background for the actual screen area.
-        // Typed as StyleProp<ViewStyle> to satisfy TS (prevents the squiggly).
+        // Typed as StyleProp<ViewStyle> to satisfy TS.
         sceneContainerStyle: [{ backgroundColor: theme.bg }] as StyleProp<ViewStyle>,
       }}
     >
