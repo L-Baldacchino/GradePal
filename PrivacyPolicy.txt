@@ -93,5 +93,5 @@ You will be notified of major updates through the app or via release notes.
 
 9. Contact
 For questions, support, or concerns:
-💬 Discord: Tera Apps Community - https://discord.gg/ngGYjU2N
+💬 Discord: Tera Apps Community - https://discord.gg/frUpBh3jm4
 🌐 GitHub: https://github.com/L-Baldacchino/GradePal

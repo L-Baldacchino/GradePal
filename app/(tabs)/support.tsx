@@ -28,7 +28,7 @@ import Constants from "expo-constants";
 
 /** External links */
 // Discord invite (feedback & community live here)
-const DISCORD_URL = "https://discord.gg/fvTgWbE6"; // Tera Apps Community invite
+const DISCORD_URL = "https://discord.gg/frUpBh3jm4"; // Tera Apps Community invite
 // Public repo link for users to browse the code or report issues on GitHub
 const GITHUB_URL = "https://github.com/L-Baldacchino/GradePal";
 // Small donation link to support development
