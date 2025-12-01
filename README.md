@@ -170,6 +170,36 @@ Grade Pal is built using a modern, lightweight, and highly reliable mobile devel
 - **TypeScript (optional)** – Improved safety and maintainability.
 - **Hermes Engine** – Faster JS runtime with reduced APK size.
 
+## **Screenshots**
+
+### Grade Pal - Logo
+
+<img width="512" height="512" alt="GradePalLogo (1)" src="https://github.com/user-attachments/assets/8d611a51-a2ed-43db-acd5-034a55c05c25" />
+
+
+### Play Store banner
+
+<img width="1024" height="500" alt="Plan Study" src="https://github.com/user-attachments/assets/d80be70b-f19b-4e8d-8e12-1b992032abf0" />
+
+
+### Home Screen - Track your subjects
+![Home Screen - Track your subjects](https://github.com/user-attachments/assets/44625521-9d59-4a5b-af65-23aec347efca)
+
+
+### Subject Screen - Track your results
+![Subject Screen - Track your results](https://github.com/user-attachments/assets/6d1c8a6c-85eb-416e-a4a0-96f614fe90eb)
+
+
+### Pomodoro Timer - Track your study habits
+![Pomodoro Timer - Track your study habits](https://github.com/user-attachments/assets/08b7e529-a87c-4cd2-8913-18f1a818ed8b)
+
+
+### Support screen - Buy me a coffee!
+![Support screen - Buy me a coffee!](https://github.com/user-attachments/assets/d4fcd99e-1bfd-44bd-b8f5-56dfdbab903d)
+
+
+
+
 
 # 📄 License
 
