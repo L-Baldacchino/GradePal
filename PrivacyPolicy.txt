@@ -1,14 +1,15 @@
-📄 Privacy Policy for Grade Pal
+📄 Privacy Policy — Grade Pal
 
-Last updated: 09 November 2025
+Last updated: 02 January 2026
 Developer: Luke Baldacchino / Tera Apps
+
 
 1. Introduction
 
-Grade Pal (“the App”) is a study-support tool designed to help students track assessment weightings, calculate grades, and manage study sessions.
-This Privacy Policy explains how the App handles user data, including what information is collected, stored, or transmitted.
+Grade Pal is a study-support tool designed to help students track assessment weightings, calculate grades, and manage study progress.
+This Privacy Policy explains how the App handles user data, including what information is stored, processed, or transmitted.
+By using the App, you agree to this policy.
 
-By using the App, you agree to the terms outlined in this policy.
 
 2. Information We Collect
 2.1. No Personal Information Collected
@@ -25,48 +26,32 @@ All app data is stored locally on your device only, including:
 
 This information never leaves your device unless you choose to export or share it manually.
 
-2.3. Audio Permission (RECORD_AUDIO)
-
-The App requests the Android permission:
-
-android.permission.RECORD_AUDIO
-
-This is required exclusively for:
-
-✅ Allowing optional haptic/audio feedback in the Pomodoro timer
-✅ Supporting optional features such as sound-based alerts or future accessibility functions
-
-The App does NOT:
-
-❌ Record conversations
-❌ Upload audio
-❌ Store audio
-❌ Transmit audio
-❌ Use audio for analytics, speech recognition, or profiling
-
-Audio is handled only in real-time on the device for timer-alert functionality.
-No audio is saved or shared at any point.
 
 3. Third-Party Services
 
-Grade Pal does not integrate with any third-party services that collect user data.
+Grade Pal does not use analytics services, advertising networks, or cloud data storage.
 
-The only third-party interactions are:
+The only third-party interaction is:
 
-✅ Opening external links
-- Discord (community support)
-- GitHub (open source transparency)
-- Buy Me a Coffee (donations)
-These links open externally, and their privacy policies apply when used.
+- Buy Me a Coffee (optional donation link)
+
+This link opens externally in your browser.
+If you choose to use it, that website’s privacy policy applies.
+
+No app data is shared with any third party.
+
 
 4. Data Sharing
-Grade Pal does not share any data with:
-- Advertisers
-- Analytics providers
-- Third parties
-- Any external servers or databases
 
-The App is completely offline-first.
+Grade Pal does not share data with:
+- advertisers
+- analytics providers
+- data brokers
+- external servers or databases
+- cloud services
+
+The App is fully offline-first.
+
 
 5. Data Security
 Because all data is stored locally on your device:
@@ -75,8 +60,11 @@ Because all data is stored locally on your device:
 - Deleting the app or using the “Reset All Data” option removes all stored information permanently
 No cloud storage is used.
 
+
 6. Children’s Privacy
-Grade Pal is suitable for users aged 13+ and collects no personal data.
+Grade Pal is not designed for young children.
+However, the App does not collect any personal information from any users.
+
 
 7. Your Rights
 Since no personal data is collected:
@@ -86,10 +74,12 @@ Since no personal data is collected:
 
 You may delete all app data anytime through the in-app Danger Zone → Reset All Data option.
 
+
 8. Changes to This Policy
 
 This Privacy Policy may be updated as features change.
-You will be notified of major updates through the app or via release notes.
+You will be notified of major updates through the app or via the Change Log (Located on Git Hub).
+
 
 9. Contact
 For questions, support, or concerns:

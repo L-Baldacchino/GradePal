@@ -27,18 +27,10 @@ import { useTheme } from "../../theme/ThemeProvider";
 import Constants from "expo-constants";
 
 /** External links */
-// Discord invite (feedback & community live here)
-const DISCORD_URL = "https://discord.gg/frUpBh3jm4"; // Tera Apps Community invite
-// Public repo link for users to browse the code or report issues on GitHub
-const GITHUB_URL = "https://github.com/L-Baldacchino/GradePal";
 // Small donation link to support development
 const BUY_ME_A_COFFEE_URL = "https://www.buymeacoffee.com/teraau";
 
-/** Open links reliably on Android/iOS: in-app browser first, then fallback
- *  Why: Some Android ROMs return false for canOpenURL on https links or have no default browser set.
- *  This opens a Chrome Custom Tab / SFSafariViewController first. If the user dismisses it,
- *  we fall back to the system Linking API.
- */
+/** Open links reliably on Android/iOS: in-app browser first, then fallback */
 async function safeOpenUrl(url: string) {
   try {
     const result = await WebBrowser.openBrowserAsync(url, {
@@ -67,14 +59,13 @@ export default function SupportScreen() {
 
   // Extract app version number displayed at bottom of this page
   const appVersion =
-    Constants.expoConfig?.version ||
-    Constants.manifest?.version ||
-    "1.0.0";
+    Constants.expoConfig?.version || Constants.manifest?.version || "1.0.4";
 
   // Button handlers for external links
-  const openDiscord = useCallback(() => safeOpenUrl(DISCORD_URL), []);
-  const openGithub = useCallback(() => safeOpenUrl(GITHUB_URL), []);
-  const openCoffee = useCallback(() => safeOpenUrl(BUY_ME_A_COFFEE_URL), []);
+  const openCoffee = useCallback(
+    () => safeOpenUrl(BUY_ME_A_COFFEE_URL),
+    []
+  );
 
   // Clears all locally stored data and sends the user back to the root
   const resetAllData = useCallback(() => {
@@ -109,73 +100,97 @@ export default function SupportScreen() {
         contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
         keyboardShouldPersistTaps="handled"
       >
-        {/* 1) Why I built this
-            Brief background so users understand the purpose and intent of the app. */}
+        {/* 1) Why I built this */}
         <View style={s.card}>
           <Text style={s.title}>Why I built this</Text>
           <Text style={s.body}>
-            Grade Pal helps uni students quickly see the percentage they need to pass a subject —
-            without spreadsheets or stress. Add your own assessments, track grades, and instantly
-            see your accumulated result. It’s simple, fast, and built for focus.
-            {"\n\n"}As a uni student myself, I built Grade Pal to solve my own struggles with tracking grades, 
-            and understanding what % I need for a final exam. I hope it helps you too!
-            {"\n\n"}Luke Baldacchino {"\n"}Creator - Grade Pal{"\n"}❤️
+            Grade Pal helps uni students quickly see the percentage they need
+            to pass a subject, without spreadsheets or stress.{"\n\n"}
+            Add your own assessments, track grades, and instantly see your
+            accumulated result. It’s simple, fast, and built for ease.
+            {"\n\n"}
+            As a uni student myself, I built Grade Pal to solve my own
+            struggles with tracking grades, and understanding what % I need for
+            a final exam. I hope it helps you too!
+            {"\n\n"}
+            Luke Baldacchino{"\n"}
+            Creator – Grade Pal{"\n"}❤️
           </Text>
         </View>
 
-        {/* 2) Discord
-            All feedback and support are centralized here. The app uses Discord as the only feedback channel. */}
-        <View style={s.card}>
-          <Text style={s.title}>Join the community (Feedback & Support)</Text>
-          <Text style={s.body}>
-            All feedback, feature requests, and support are handled in the{" "}
-            <Text style={{ fontWeight: "700" }}>Tera Apps Community</Text> Discord. Join to stay
-            updated and chat with other students.
-          </Text>
-
-          <Pressable onPress={openDiscord} style={[s.ctaBtn, { backgroundColor: "#5865F2" }]}>
-            <Ionicons name="logo-discord" size={20} color="#fff" />
-            <Text style={[s.ctaText, { color: "#fff" }]}>Join Discord</Text>
-          </Pressable>
-        </View>
-
-        {/* 3) GitHub
-            Link to the public repository for transparency and issue tracking. */}
-        <View style={s.card}>
-          <Text style={s.title}>GitHub Repository</Text>
-          <Text style={s.body}>
-            Want to view the source code, star the project, or download via GitHub?
-            You’ll find everything here.
-          </Text>
-
-          <Pressable onPress={openGithub} style={[s.ctaBtn, { backgroundColor: "#24292F" }]}>
-            <Ionicons name="logo-github" size={20} color="#fff" />
-            <Text style={[s.ctaText, { color: "#fff" }]}>View on GitHub</Text>
-          </Pressable>
-        </View>
-
-        {/* 4) Support the project
-            Optional donations – keeps the app free and helps future development. */}
+        {/* 2) Support the project */}
         <View style={s.card}>
           <Text style={s.title}>Support the project</Text>
           <Text style={s.body}>
-            If Grade Pal helped you, you can buy me a coffee. Your support helps keep the app free
-            and funds future improvements.
+            If Grade Pal helped you, you can buy me a coffee. Your support helps
+            keep the app free and funds future improvements.
           </Text>
 
-          <Pressable onPress={openCoffee} style={[s.ctaBtn, { backgroundColor: theme.primary }]}>
+          <Pressable
+            onPress={openCoffee}
+            style={[s.ctaBtn, { backgroundColor: theme.primary }]}
+          >
             <Ionicons name="cafe" size={18} color={theme.primaryText} />
-            <Text style={[s.ctaText, { color: theme.primaryText }]}>Buy me a coffee</Text>
+            <Text style={[s.ctaText, { color: theme.primaryText }]}>
+              Buy me a coffee
+            </Text>
           </Pressable>
         </View>
 
-        {/* 5) Danger zone
-            One-tap reset to clear everything on this device. Shows a confirmation first. */}
+        {/* 3) Privacy & Data */}
+        <View style={s.card}>
+          <Text style={s.title}>Privacy & Data</Text>
+          <Text style={s.body}>
+            Your data stays on your device. Grade Pal is designed to be simple,
+            transparent, and student-friendly:
+          </Text>
+
+          <View style={s.bulletList}>
+            <View style={s.bulletRow}>
+              <Text style={s.bulletDot}>•</Text>
+              <Text style={s.body}>No tracking or analytics</Text>
+            </View>
+            <View style={s.bulletRow}>
+              <Text style={s.bulletDot}>•</Text>
+              <Text style={s.body}>No account or login required</Text>
+            </View>
+            <View style={s.bulletRow}>
+              <Text style={s.bulletDot}>•</Text>
+              <Text style={s.body}>All subjects and grades are stored locally</Text>
+            </View>
+            <View style={s.bulletRow}>
+              <Text style={s.bulletDot}>•</Text>
+              <Text style={s.body}>
+                You can delete all data at any time from this screen
+              </Text>
+            </View>
+          </View>
+
+          <Text style={[s.body, { marginTop: 8, opacity: 0.8 }]}>
+            Nothing is sent to a server, everything lives on your phone.
+          </Text>
+        </View>
+
+        {/* 4) Disclaimer */}
+        <View style={s.card}>
+          <Text style={s.title}>Disclaimer</Text>
+          <Text style={s.body}>
+            Grade Pal aims to help students better understand their
+            progress across assessments, however all results are estimates only.
+            Final grades, assessment policies, and hurdle outcomes are
+            determined by your university. If you are unsure about your standing
+            in a subject, please contact your lecturer or course coordinator.
+          </Text>
+        </View>
+
+        
+        {/* 5) Danger zone */}
         <View style={s.card}>
           <Text style={s.title}>Danger zone</Text>
           <Text style={s.body}>
-            Need a fresh start? This removes all subjects, per-subject grade planners, Pomodoro logs,
-            and theme preferences stored on this device. Please refresh the app to see the changes.
+            Need a fresh start? This removes all subjects, per-subject grade
+            planners, Pomodoro logs, and theme preferences stored on this
+            device.
           </Text>
 
           <Pressable onPress={resetAllData} style={s.dangerBtn}>
@@ -184,8 +199,7 @@ export default function SupportScreen() {
           </Pressable>
         </View>
 
-        {/* ✅ 6) App version label
-            Simple, small footer text so users know what version they're running. */}
+        {/* ✅ App version label */}
         <View style={{ marginTop: 12, alignItems: "center", opacity: 0.6 }}>
           <Text style={{ color: theme.textMuted, fontSize: 12 }}>
             Version {appVersion}
@@ -194,14 +208,15 @@ export default function SupportScreen() {
       </ScrollView>
 
       {/* Bottom safe area so content doesn't clash with the home indicator / gesture bar */}
-      <SafeAreaView edges={["bottom"]} style={{ backgroundColor: theme.bg }} />
+      <SafeAreaView
+        edges={["bottom"]}
+        style={{ backgroundColor: theme.bg }}
+      />
     </SafeAreaView>
   );
 }
 
-/* ---------- styles ----------
-   These are theme-aware styles. Colors come from ThemeProvider so
-   light/dark palettes stay consistent across the app. */
+/* ---------- styles ---------- */
 const makeStyles = (t: any) =>
   StyleSheet.create({
     // Screen background
@@ -220,8 +235,25 @@ const makeStyles = (t: any) =>
     // Card title text
     title: { color: t.text, fontSize: 18, fontWeight: "700", marginBottom: 6 },
 
-    // Body copy (comfortable line height, slightly softened)
+    // Body copy
     body: { color: t.text, fontSize: 14, lineHeight: 20, opacity: 0.9 },
+
+    // Bullet list styles
+    bulletList: {
+      marginTop: 8,
+      marginLeft: 4,
+    },
+    bulletRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      marginBottom: 4,
+    },
+    bulletDot: {
+      color: t.text,
+      fontSize: 14,
+      marginRight: 6,
+      lineHeight: 20,
+    },
 
     // Primary call-to-action button
     ctaBtn: {

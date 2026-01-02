@@ -1,0 +1,18 @@
+📄 Change Log for Grade Pal
+
+Last updated: 02 January 2026
+Developer: Luke Baldacchino / Tera Apps
+
+V 1.0.3 - Minor updates
+- UI update to Home page:
+  - Allows for re-ordering Subjects
+
+- UI update to [subject] page:
+  - Remove subject located at the bottom of page
+  - Animation introduced when navigating between home and subject pages
+  - New calculations added to help you understand your subject position
+  - Added Tags for assessment type and hurdle requirement
+
+- UI update to Support page:
+  - Discord and Github links removed
+  - Added Privacy and Data section

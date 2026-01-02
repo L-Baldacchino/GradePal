@@ -27,70 +27,78 @@ export default function TabsLayout() {
   );
 
   return (
-    <Tabs
-      // Put shared options here so both tabs inherit the same look/feel
-      screenOptions={{
-        // Keep the tab header visible
-        headerShown: true,
+    // 🔑 Wrap Tabs so any “gaps” during transitions show theme.bg instead of white
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <Tabs
+        // Put shared options here so both tabs inherit the same look/feel
+        screenOptions={{
+          // Keep the tab header visible
+          headerShown: true,
 
-        // Style of the bottom tab bar
-        tabBarStyle: {
-          backgroundColor: theme.navBg,
-          borderTopColor: theme.border,
-        },
+          // Style of the bottom tab bar
+          tabBarStyle: {
+            backgroundColor: theme.navBg,
+            borderTopColor: theme.border,
+          },
 
-        // Active/inactive tab icon colors
-        tabBarActiveTintColor: theme.primary,
-        tabBarInactiveTintColor: theme.textMuted,
+          // Active/inactive tab icon colors
+          tabBarActiveTintColor: theme.primary,
+          tabBarInactiveTintColor: theme.textMuted,
 
-        // Header appearance
-        headerStyle: { backgroundColor: theme.navBg },
-        headerTitleStyle: { color: theme.navText },
-        headerTintColor: theme.navText,
+          // Header appearance
+          headerStyle: { backgroundColor: theme.navBg },
+          headerTitleStyle: { color: theme.navText },
+          headerTintColor: theme.navText,
 
-        // Background for the actual screen area.
-        // Typed as StyleProp<ViewStyle> to satisfy TS.
-        sceneContainerStyle: [{ backgroundColor: theme.bg }] as StyleProp<ViewStyle>,
-      }}
-    >
-      {/* -------------------------  
-          HOME TAB
-          ------------------------- */}
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: "Home",
-          tabBarIcon: ({ color, size }) =>
-            <Ionicons name="home" color={color} size={size} />,
-          headerRight,
+          // Background for the actual screen area.
+          // Typed as StyleProp<ViewStyle> to satisfy TS.
+          sceneContainerStyle: [
+            { backgroundColor: theme.bg },
+          ] as StyleProp<ViewStyle>,
         }}
-      />
+      >
+        {/* -------------------------  
+            HOME TAB
+            ------------------------- */}
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: "Home",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="home" color={color} size={size} />
+            ),
+            headerRight,
+          }}
+        />
 
-      {/* -------------------------  
-          POMODORO TIMER TAB
-          ------------------------- */}
-      <Tabs.Screen
-        name="pomodoro"
-        options={{
-          title: "Pomodoro Timer",
-          tabBarIcon: ({ color, size }) =>
-            <Ionicons name="timer" color={color} size={size} />,
-          headerRight,
-        }}
-      />
+        {/* -------------------------  
+            POMODORO TIMER TAB
+            ------------------------- */}
+        <Tabs.Screen
+          name="pomodoro"
+          options={{
+            title: "Pomodoro Timer",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="timer" color={color} size={size} />
+            ),
+            headerRight,
+          }}
+        />
 
-      {/* -------------------------  
-          SUPPORT TAB
-          ------------------------- */}
-      <Tabs.Screen
-        name="support"
-        options={{
-          title: "Support",
-          tabBarIcon: ({ color, size }) =>
-            <Ionicons name="heart" color={color} size={size} />,
-          headerRight,
-        }}
-      />
-    </Tabs>
+        {/* -------------------------  
+            SUPPORT TAB
+            ------------------------- */}
+        <Tabs.Screen
+          name="support"
+          options={{
+            title: "Support",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="heart" color={color} size={size} />
+            ),
+            headerRight,
+          }}
+        />
+      </Tabs>
+    </View>
   );
 }
