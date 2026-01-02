@@ -1,18 +1,38 @@
 📄 Change Log for Grade Pal
 
-Last updated: 02 January 2026
-Developer: Luke Baldacchino / Tera Apps
+Last updated: 02 January 2026  
+Developer: Luke Baldacchino / Tera Apps  
 
-V 1.0.3 - Minor updates
+V 1.0.4 – Minor updates
+
 - UI update to Home page:
-  - Allows for re-ordering Subjects
+  - Subjects can now be re-ordered via long-press + drag.
+  - New first-time tutorial appears when there are no subjects, guiding you to add your first one.
+  - New in-app “Enjoying Grade Pal?” review prompt:
+    - Links directly to the Play Store to leave a review.
+    - “Maybe later” snoozes the reminder for 4 weeks.
 
 - UI update to [subject] page:
-  - Remove subject located at the bottom of page
-  - Animation introduced when navigating between home and subject pages
-  - New calculations added to help you understand your subject position
-  - Added Tags for assessment type and hurdle requirement
+  - “Remove subject” action moved to the bottom of the page for clarity.
+  - Smooth slide animation when navigating between Home and Subject pages.
+  - New subject snapshot banner showing:
+    - Accumulated grade so far
+    - Remaining weight
+    - Possible final grade range
+  - New “What do I need to pass?” helper card that explains:
+    - Whether you’ve already passed
+    - If passing is still possible
+    - The average % needed across remaining assessments to reach the pass mark
+  - Assessment cards can now be tagged and re-ordered:
+    - Type tags: Assignment, Exam, Quiz, Hurdle
+    - Hurdle items must reach at least 50% to be considered passed, and this is reflected in the pass helper logic.
 
 - UI update to Support page:
-  - Discord and Github links removed
-  - Added Privacy and Data section
+  - Discord and GitHub links removed.
+  - Added “Privacy & Data” section:
+    - No ads
+    - No tracking
+    - No account required
+    - All data stored locally on your device
+    - Data can be deleted at any time via “Reset all data”.
+ 
