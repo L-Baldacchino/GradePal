@@ -42,7 +42,7 @@ const TUTORIAL_SEEN_KEY = "meta:subjects-tutorial-seen";
 
 // ⏱ For testing: 10 seconds.
 // For production, change to: 24 * 60 * 60 * 1000 (24 hours)
-const INITIAL_FEEDBACK_DELAY_MS = 10 * 1000;
+const INITIAL_FEEDBACK_DELAY_MS = 24 * 60 * 60 * 1000;
 
 // ⏱ Snooze duration after "Maybe later": 4 weeks
 const FEEDBACK_SNOOZE_DELAY_MS = 28 * 24 * 60 * 60 * 1000;
