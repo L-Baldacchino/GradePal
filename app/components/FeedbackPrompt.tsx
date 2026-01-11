@@ -1,3 +1,5 @@
+// app/components/FeedbackPrompt.tsx
+
 import React from "react";
 import { Linking, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "../../theme/ThemeProvider";

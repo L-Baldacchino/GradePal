@@ -2,7 +2,7 @@
   "expo": {
     "name": "Grade Pal",
     "slug": "ExamCalculator",
-    "version": "1.0.4",
+    "version": "1.1.0",
     "orientation": "portrait",
     "scheme": "examcalculator",
     "icon": "./assets/images/icon.png",
@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "4"
+      "buildNumber": "5"
     },
     "android": {
       "softwareKeyboardLayoutMode": "resize",
@@ -28,14 +28,10 @@
       "package": "com.l.baldacchino.GradePal",
       "versionCode": 2,
       "permissions": [
-        "INTERNET",
-        "VIBRATE",
-        "WAKE_LOCK",
-        "FOREGROUND_SERVICE"
+        "INTERNET"
       ],
       "blockedPermissions": ["android.permission.RECORD_AUDIO"]
     },
-    
     "web": {
       "output": "static",
       "favicon": "./assets/images/icon.png"
@@ -56,7 +52,8 @@
           }
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      ["expo-notifications"]
     ],
     "extra": {
       "router": {},

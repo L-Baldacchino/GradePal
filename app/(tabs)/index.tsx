@@ -1,14 +1,16 @@
 // app/(tabs)/index.tsx
+//
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
-// Persist subjects locally so they survive app restarts
+import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-// Navigation into the per-subject grade planner screen
 import { useFocusEffect, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Animated,
+  Keyboard,
   Linking,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -16,48 +18,185 @@ import {
   TextInput,
   View,
 } from "react-native";
-// Theming hook so colors adapt to light/dark palettes
+import DraggableFlatList, { RenderItemParams } from "react-native-draggable-flatlist";
 import { useTheme } from "../../theme/ThemeProvider";
-// Draggable list for reordering subjects by long-press + drag
-import DraggableFlatList, {
-  RenderItemParams,
-} from "react-native-draggable-flatlist";
 
-// Simple shape for a subject row on the home screen
+/** ---------- Types ---------- */
+
+type PeriodType = "Semester" | "Trimester" | "Term";
+type TagKey = "core" | "major" | "minor" | "elective" | "custom";
+
+type Commencement = {
+  year: number; // e.g. 2027
+  type: PeriodType; // Semester/Trimester/Term
+  num: number; // 1..4 (Term can be 1..4; Sem/Trim will cap in UI)
+};
+
 type Subject = {
   code: string;
   name: string;
+
+  finalMark?: number; // 0-100
+
+  isExempt?: boolean; // RPL/credit
+  exemptFinalMark?: number; // optional grade for exempt subject
+
+  commencement?: Commencement;
+  tagKey?: TagKey;
+  tagLabel?: string;
+
+  manualOrder?: boolean;
 };
 
-// Where we store the subjects list in AsyncStorage
+/** ---------- Storage keys ---------- */
+
 const STORAGE_KEY = "subjects-list:v1";
 
-// Feedback-related keys + constants
-const FIRST_OPEN_KEY = "meta:first-open-at"; // first time app opened
-const FEEDBACK_PROMPTED_KEY = "meta:feedback-prompted"; // "true" => never ask again
-const FEEDBACK_SNOOZE_KEY = "meta:feedback-snooze-at"; // timestamp of "maybe later"
+const FIRST_OPEN_KEY = "meta:first-open-at";
+const FEEDBACK_PROMPTED_KEY = "meta:feedback-prompted";
+const FEEDBACK_SNOOZE_KEY = "meta:feedback-snooze-at";
 
-// Tutorial key
 const TUTORIAL_SEEN_KEY = "meta:subjects-tutorial-seen";
 
-// ⏱ For testing: 10 seconds.
-// For production, change to: 24 * 60 * 60 * 1000 (24 hours)
 const INITIAL_FEEDBACK_DELAY_MS = 24 * 60 * 60 * 1000;
-
-// ⏱ Snooze duration after "Maybe later": 4 weeks
 const FEEDBACK_SNOOZE_DELAY_MS = 28 * 24 * 60 * 60 * 1000;
 
-const PLAY_STORE_URL =
-  "https://play.google.com/store/apps/details?id=com.l.baldacchino.GradePal";
+const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.l.baldacchino.GradePal";
 
-/** ---------- Row component with wobble animation while dragging ---------- */
+/** ---------- Helpers ---------- */
+
+function clamp(n: number, lo = 0, hi = 100) {
+  return Math.max(lo, Math.min(hi, n));
+}
+
+function toNum(s?: string) {
+  const n = Number((s ?? "").toString().replace(/,/g, "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function safeParseSubjects(raw: string | null): Subject[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map((x: any) => {
+        const code = String(x?.code ?? "").trim().toUpperCase();
+        const name = String(x?.name ?? "").trim();
+
+        const finalMark =
+          typeof x?.finalMark === "number" && Number.isFinite(x.finalMark) ? clamp(x.finalMark, 0, 100) : undefined;
+
+        const isExempt = typeof x?.isExempt === "boolean" ? x.isExempt : false;
+        const exemptFinalMark =
+          typeof x?.exemptFinalMark === "number" && Number.isFinite(x.exemptFinalMark)
+            ? clamp(x.exemptFinalMark, 0, 100)
+            : undefined;
+
+        const commencement =
+          x?.commencement &&
+          typeof x.commencement?.year === "number" &&
+          typeof x.commencement?.type === "string" &&
+          typeof x.commencement?.num === "number"
+            ? ({
+                year: x.commencement.year,
+                type: x.commencement.type as PeriodType,
+                num: x.commencement.num,
+              } as Commencement)
+            : undefined;
+
+        const tagKey = typeof x?.tagKey === "string" ? (x.tagKey as TagKey) : undefined;
+        const tagLabel = typeof x?.tagLabel === "string" ? String(x.tagLabel).trim() : undefined;
+
+        const manualOrder = typeof x?.manualOrder === "boolean" ? x.manualOrder : false;
+
+        return {
+          code,
+          name,
+          finalMark,
+          isExempt,
+          exemptFinalMark,
+          commencement,
+          tagKey,
+          tagLabel,
+          manualOrder,
+        } as Subject;
+      })
+      .filter((s: Subject) => s.code.length > 0 && s.name.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function subjectCountsTowardWAM(s: Subject): number | undefined {
+  if (typeof s.finalMark === "number" && Number.isFinite(s.finalMark)) return s.finalMark;
+  if (s.isExempt && typeof s.exemptFinalMark === "number" && Number.isFinite(s.exemptFinalMark)) return s.exemptFinalMark;
+  return undefined;
+}
+
+function isCompletedSubject(s: Subject) {
+  if (typeof s.finalMark === "number" && Number.isFinite(s.finalMark)) return true;
+  if (s.isExempt) return true;
+  return false;
+}
+
+function calcOverallWAM(subjects: Subject[]): { wam?: number; counted: number } {
+  const marks = subjects
+    .map(subjectCountsTowardWAM)
+    .filter((m): m is number => typeof m === "number" && Number.isFinite(m));
+
+  if (marks.length === 0) return { wam: undefined, counted: 0 };
+
+  const sum = marks.reduce((acc, m) => acc + m, 0);
+  return { wam: sum / marks.length, counted: marks.length };
+}
+
+function formatCommencement(c?: Commencement) {
+  if (!c) return "";
+  return `${c.year} • ${c.type} ${c.num}`;
+}
+
+function periodToSortableKey(c?: Commencement) {
+  if (!c) return Number.MAX_SAFE_INTEGER;
+  const typeWeight = c.type === "Semester" ? 1 : c.type === "Trimester" ? 2 : 3;
+  return c.year * 1000 + typeWeight * 10 + c.num;
+}
+
+/** ---------- Tag styling ---------- */
+
+function getTagVisual(tagKey?: TagKey) {
+  switch (tagKey) {
+    case "core":
+      return { label: "Core", color: "#2563EB" };
+    case "major":
+      return { label: "Major", color: "#16A34A" };
+    case "minor":
+      return { label: "Minor", color: "#ffee00ff" };
+    case "elective":
+      return { label: "Elective", color: "#9333EA" };
+    case "custom":
+      return { label: "Custom", color: "#F97316" };
+    default:
+      return { label: "Subject", color: "#64748B" };
+  }
+}
+
+function getExemptVisual() {
+  return { label: "Exempt", color: "#06B6D4" };
+}
+
+/** ---------- Subject row ---------- */
 
 type SubjectRowProps = {
   item: Subject;
-  drag: () => void;
+  drag?: () => void;
   isActive: boolean;
   theme: any;
   styles: ReturnType<typeof makeStyles>;
+  onEdit: (s: Subject) => void;
+  onRemove: (s: Subject) => void;
+  canDrag: boolean;
 };
 
 const SubjectRow: React.FC<SubjectRowProps> = ({
@@ -66,75 +205,125 @@ const SubjectRow: React.FC<SubjectRowProps> = ({
   isActive,
   theme,
   styles,
+  onEdit,
+  onRemove,
+  canDrag,
 }) => {
   const router = useRouter();
   const wobbleAnim = useRef(new Animated.Value(0)).current;
 
-  // Wobble effect when the row is actively being dragged
   useEffect(() => {
     let animation: Animated.CompositeAnimation | undefined;
 
-    if (isActive) {
+    if (isActive && canDrag) {
       animation = Animated.loop(
         Animated.sequence([
-          Animated.timing(wobbleAnim, {
-            toValue: -3,
-            duration: 80,
-            useNativeDriver: true,
-          }),
-          Animated.timing(wobbleAnim, {
-            toValue: 3,
-            duration: 80,
-            useNativeDriver: true,
-          }),
+          Animated.timing(wobbleAnim, { toValue: -2, duration: 70, useNativeDriver: true }),
+          Animated.timing(wobbleAnim, { toValue: 2, duration: 70, useNativeDriver: true }),
         ])
       );
       animation.start();
     } else {
-      if (animation) {
-        animation.stop();
-      }
+      if (animation) animation.stop();
       wobbleAnim.stopAnimation();
       wobbleAnim.setValue(0);
     }
 
     return () => {
-      if (animation) {
-        animation.stop();
-      }
+      if (animation) animation.stop();
       wobbleAnim.stopAnimation();
       wobbleAnim.setValue(0);
     };
-  }, [isActive, wobbleAnim]);
+  }, [isActive, wobbleAnim, canDrag]);
 
   const animatedStyle = {
-    transform: [{ translateX: wobbleAnim }, { scale: isActive ? 1.02 : 1 }],
-    opacity: isActive ? 0.95 : 1,
+    transform: [{ translateX: wobbleAnim }, { scale: isActive ? 1.015 : 1 }],
+    opacity: isActive ? 0.96 : 1,
   };
 
-  return (
-    <Animated.View style={[styles.subjectCard, animatedStyle]}>
-      {/* Tap left side to open the grade planner */}
-      <Pressable
-        style={{ flex: 1 }}
-        onPress={() =>
-          router.push(`/grade-planner/${encodeURIComponent(item.code)}`)
-        }
-      >
-        <Text>
-          <Text style={styles.subjectCode}>{item.code}</Text>
-          <Text style={styles.subjectName}> – {item.name}</Text>
-        </Text>
-      </Pressable>
+  const mark = subjectCountsTowardWAM(item);
+  const completed = isCompletedSubject(item);
 
-      {/* Drag handle – long-press and drag this icon */}
+  const tv = item.isExempt ? getExemptVisual() : getTagVisual(item.tagKey);
+  const tagText = item.isExempt ? tv.label : item.tagLabel?.trim() ? item.tagLabel!.trim() : tv.label;
+
+  const accent = tv.color;
+  const periodLabel = formatCommencement(item.commencement);
+
+  return (
+    <Animated.View
+      style={[
+        styles.subjectCard,
+        animatedStyle,
+        {
+          borderColor: theme.border,
+          backgroundColor: theme.card,
+          borderLeftColor: accent,
+          zIndex: isActive ? 50 : 0,
+          elevation: isActive ? 12 : 0,
+        },
+        completed && styles.completedCard,
+      ]}
+    >
       <Pressable
-        onLongPress={drag}
-        delayLongPress={150}
-        style={styles.dragHandle}
-        hitSlop={10}
+        style={{ flex: 1, paddingRight: 10 }}
+        onPress={() => router.push(`/grade-planner/${encodeURIComponent(item.code)}`)}
       >
-        <Text style={{ color: theme.textMuted, fontSize: 18 }}>≡</Text>
+        <View style={styles.subjectTopRow}>
+          <Text style={{ flex: 1 }}>
+            <Text style={styles.subjectCode}>{item.code}</Text>
+            <Text style={styles.subjectName}> – {item.name}</Text>
+          </Text>
+
+          <View style={[styles.tagPill, { borderColor: accent }]}>
+            <Text style={[styles.tagText, { color: accent }]} numberOfLines={1}>
+              {tagText}
+            </Text>
+          </View>
+        </View>
+
+        <View style={{ marginTop: 8 }}>
+          {item.isExempt ? (
+            <Text style={[styles.metaText, { color: theme.textMuted }]}>
+              Exempt
+              {typeof item.exemptFinalMark === "number" ? ` • Grade: ${item.exemptFinalMark.toFixed(1)}%` : ""}
+            </Text>
+          ) : typeof item.finalMark === "number" ? (
+            <Text style={[styles.metaText, { color: theme.textMuted }]}>Final: {item.finalMark.toFixed(1)}%</Text>
+          ) : null}
+
+          {typeof mark === "number" ? (
+            <Text style={[styles.metaTiny, { color: theme.textMuted }]}>Counts toward WAM</Text>
+          ) : null}
+        </View>
+
+        <View style={styles.subjectBottomRow}>
+          <Text style={[styles.periodText, { color: theme.textMuted }]} numberOfLines={1}>
+            {periodLabel}
+            {completed ? "  •  Completed" : ""}
+          </Text>
+
+          <View style={styles.actionsRow}>
+            <Pressable onPress={() => onEdit(item)} style={styles.actionIconBtn} hitSlop={10}>
+              <Ionicons name="create-outline" size={18} color={theme.textMuted} />
+            </Pressable>
+
+            <Pressable onPress={() => onRemove(item)} style={styles.actionIconBtn} hitSlop={10}>
+              <Ionicons name="trash-outline" size={18} color={theme.textMuted} />
+            </Pressable>
+
+            {canDrag ? (
+              <Pressable
+                onLongPress={drag}
+                delayLongPress={140}
+                style={styles.actionIconBtn}
+                hitSlop={10}
+              >
+                <Ionicons name="reorder-three-outline" size={22} color={theme.textMuted} />
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
       </Pressable>
     </Animated.View>
   );
@@ -146,56 +335,76 @@ export default function SubjectsScreen() {
   const { theme } = useTheme();
   const s = makeStyles(theme);
 
-  // Local state for the list and the form inputs
   const [subjects, setSubjects] = useState<Subject[]>([]);
+
+  const [isDragging, setIsDragging] = useState(false);
+
+
+  const [addOpen, setAddOpen] = useState(false);
+
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
 
-  // Prevent multiple feedback checks in a single app session
-  const [feedbackChecked, setFeedbackChecked] = useState(false);
-  // Controls the custom in-app feedback modal visibility
-  const [showFeedback, setShowFeedback] = useState(false);
+  const [year, setYear] = useState(String(new Date().getFullYear()));
+  const [periodType, setPeriodType] = useState<PeriodType>("Semester");
+  const [periodNum, setPeriodNum] = useState<number>(1);
 
-  // Tutorial visibility
+  const [tagKey, setTagKey] = useState<TagKey>("core");
+  const [customTag, setCustomTag] = useState("");
+
+  const [isExempt, setIsExempt] = useState(false);
+  const [exemptGrade, setExemptGrade] = useState("");
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editing, setEditing] = useState<Subject | null>(null);
+
+  const [editName, setEditName] = useState("");
+  const [editYear, setEditYear] = useState("");
+  const [editPeriodType, setEditPeriodType] = useState<PeriodType>("Semester");
+  const [editPeriodNum, setEditPeriodNum] = useState<number>(1);
+  const [editTagKey, setEditTagKey] = useState<TagKey>("core");
+  const [editCustomTag, setEditCustomTag] = useState("");
+  const [editIsExempt, setEditIsExempt] = useState(false);
+  const [editExemptGrade, setEditExemptGrade] = useState("");
+
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const [removing, setRemoving] = useState<Subject | null>(null);
+
+  const [feedbackChecked, setFeedbackChecked] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
 
-  // Load subjects from storage
+  async function persist(next: Subject[]) {
+    setSubjects(next);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  }
+
   const loadSubjects = useCallback(async () => {
     try {
       const saved = await AsyncStorage.getItem(STORAGE_KEY);
-      const parsed = saved ? (JSON.parse(saved) as Subject[]) : [];
+      const parsed = safeParseSubjects(saved);
       setSubjects(parsed);
 
-      // If there are no subjects, and tutorial hasn't been seen, show it
       if (!parsed || parsed.length === 0) {
         const seen = await AsyncStorage.getItem(TUTORIAL_SEEN_KEY);
-        if (seen !== "true") {
-          setShowTutorial(true);
-        }
+        if (seen !== "true") setShowTutorial(true);
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
   }, []);
 
-  // Check if we should prompt for Play Store feedback
   const checkFeedbackPrompt = useCallback(async () => {
     try {
-      // Only show this on Android, since the link is for Google Play
       if (Platform.OS !== "android") return;
-
-      if (feedbackChecked) return; // already handled this session
+      if (feedbackChecked) return;
 
       const now = Date.now();
 
-      // Has user already permanently dismissed by leaving a review?
       const promptedFlag = await AsyncStorage.getItem(FEEDBACK_PROMPTED_KEY);
       if (promptedFlag === "true") {
         setFeedbackChecked(true);
         return;
       }
 
-      // Get or set the first-open timestamp
       let firstOpenRaw = await AsyncStorage.getItem(FIRST_OPEN_KEY);
       if (!firstOpenRaw) {
         await AsyncStorage.setItem(FIRST_OPEN_KEY, String(now));
@@ -210,13 +419,11 @@ export default function SubjectsScreen() {
         return;
       }
 
-      // Has it been at least INITIAL_FEEDBACK_DELAY_MS since first open?
       if (now - firstOpen < INITIAL_FEEDBACK_DELAY_MS) {
         setFeedbackChecked(true);
         return;
       }
 
-      // Check if user hit "Maybe later" recently and we're still in snooze period
       const snoozeRaw = await AsyncStorage.getItem(FEEDBACK_SNOOZE_KEY);
       if (snoozeRaw) {
         const snoozeAt = parseInt(snoozeRaw, 10);
@@ -226,22 +433,18 @@ export default function SubjectsScreen() {
         }
       }
 
-      // ✅ Time to ask for feedback via custom modal
       setFeedbackChecked(true);
       setShowFeedback(true);
     } catch {
-      // Silent fail – we don't want feedback logic to break the app
       setFeedbackChecked(true);
     }
   }, [feedbackChecked]);
 
-  // Initial load on mount
   useEffect(() => {
     loadSubjects();
     checkFeedbackPrompt();
   }, [loadSubjects, checkFeedbackPrompt]);
 
-  // 🔄 Reload subjects + re-check feedback whenever this screen gains focus
   useFocusEffect(
     useCallback(() => {
       loadSubjects();
@@ -249,51 +452,183 @@ export default function SubjectsScreen() {
     }, [loadSubjects, checkFeedbackPrompt])
   );
 
-  // Add a subject row, with basic validation and duplicate-code guard
-  const addSubject = () => {
+  const wamInfo = useMemo(() => calcOverallWAM(subjects), [subjects]);
+  const wamDisplay = typeof wamInfo.wam === "number" ? wamInfo.wam.toFixed(1) : "--";
+
+  const anyManual = subjects.some((s) => s.manualOrder);
+
+  const { activeList, completedList } = useMemo(() => {
+    const active = subjects.filter((s) => !isCompletedSubject(s));
+    const completed = subjects.filter((s) => isCompletedSubject(s));
+
+    if (anyManual) return { activeList: active, completedList: completed };
+
+    const sortFn = (a: Subject, b: Subject) => {
+      const ak = periodToSortableKey(a.commencement);
+      const bk = periodToSortableKey(b.commencement);
+      if (ak !== bk) return ak - bk;
+      return a.code.localeCompare(b.code);
+    };
+
+    active.sort(sortFn);
+    completed.sort(sortFn);
+
+    return { activeList: active, completedList: completed };
+  }, [subjects, anyManual]);
+
+  function resetAddForm() {
+    setCode("");
+    setName("");
+    setYear(String(new Date().getFullYear()));
+    setPeriodType("Semester");
+    setPeriodNum(1);
+    setTagKey("core");
+    setCustomTag("");
+    setIsExempt(false);
+    setExemptGrade("");
+  }
+
+  function getTagLabelFromForm(k: TagKey, custom: string) {
+    if (k === "custom") return custom.trim() || "Custom";
+    if (k === "core") return "Core";
+    if (k === "major") return "Major";
+    if (k === "minor") return "Minor";
+    return "Elective";
+  }
+
+  function maxNumForType(t: PeriodType) {
+    if (t === "Semester") return 2;
+    if (t === "Trimester") return 3;
+    return 4;
+  }
+
+  const addSubject = async () => {
     if (!code.trim() || !name.trim()) {
-      Alert.alert("Missing info", "Please enter both code and name.");
+      Alert.alert("Missing info", "Please enter both subject code and name.");
       return;
     }
 
-    const exists = subjects.some(
-      (s) => s.code.toUpperCase() === code.trim().toUpperCase()
-    );
+    const exists = subjects.some((s) => s.code.toUpperCase() === code.trim().toUpperCase());
     if (exists) {
       Alert.alert("Duplicate", "This subject code already exists.");
       return;
     }
 
+    const y = parseInt(year, 10);
+    if (!Number.isFinite(y) || y < 2000 || y > 2100) {
+      Alert.alert("Invalid year", "Please enter a valid year (e.g. 2027).");
+      return;
+    }
+
+    const numMax = maxNumForType(periodType);
+    const n = clamp(periodNum, 1, numMax);
+
     const newSub: Subject = {
       code: code.trim().toUpperCase(),
       name: name.trim(),
+      commencement: { year: y, type: periodType, num: n },
+      tagKey,
+      tagLabel: getTagLabelFromForm(tagKey, customTag),
+      isExempt: isExempt ? true : false,
+      exemptFinalMark: isExempt && exemptGrade.trim() !== "" ? clamp(toNum(exemptGrade.trim()), 0, 100) : undefined,
+      manualOrder: anyManual,
     };
 
-    // Newest subject at the top
-    const updated = [newSub, ...subjects];
-
-    setSubjects(updated);
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
-
-    setCode("");
-    setName("");
+    const next = [newSub, ...subjects];
+    await persist(next).catch(() => {});
+    Keyboard.dismiss();
+    setAddOpen(false);
+    resetAddForm();
   };
 
-  // When list order changes via drag, save immediately
-  const handleReorder = (data: Subject[]) => {
-    setSubjects(data);
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data)).catch(() => {});
+  const handleReorderActive = async (activeOrdered: Subject[]) => {
+    const nextSubjects = [...activeOrdered, ...completedList].map((s) => ({ ...s, manualOrder: true }));
+    await persist(nextSubjects).catch(() => {});
   };
 
-  // Tutorial: mark as seen and hide
   const finishTutorial = () => {
     setShowTutorial(false);
     AsyncStorage.setItem(TUTORIAL_SEEN_KEY, "true").catch(() => {});
   };
 
-  // Wire SubjectRow into DraggableFlatList
-  const renderItem = (params: RenderItemParams<Subject>) => {
-    const { item, drag, isActive } = params;
+  function openEditModal(sub: Subject) {
+    setEditing(sub);
+    setEditName(sub.name);
+
+    const c = sub.commencement;
+    setEditYear(c?.year ? String(c.year) : String(new Date().getFullYear()));
+    setEditPeriodType(c?.type ?? "Semester");
+    setEditPeriodNum(c?.num ?? 1);
+
+    setEditTagKey(sub.tagKey ?? "core");
+    setEditCustomTag(sub.tagKey === "custom" ? sub.tagLabel ?? "" : "");
+
+    setEditIsExempt(!!sub.isExempt);
+    setEditExemptGrade(
+      typeof sub.exemptFinalMark === "number" && Number.isFinite(sub.exemptFinalMark)
+        ? String(sub.exemptFinalMark.toFixed(1))
+        : ""
+    );
+
+    setEditOpen(true);
+  }
+
+  async function saveEditModal() {
+    if (!editing) return;
+
+    const y = parseInt(editYear, 10);
+    if (!Number.isFinite(y) || y < 2000 || y > 2100) {
+      Alert.alert("Invalid year", "Please enter a valid year (e.g. 2027).");
+      return;
+    }
+
+    const numMax = maxNumForType(editPeriodType);
+    const n = clamp(editPeriodNum, 1, numMax);
+
+    const updatedTagLabel = editTagKey === "custom" ? editCustomTag.trim() || "Custom" : getTagLabelFromForm(editTagKey, "");
+
+    const next = subjects.map((s) => {
+      if (s.code !== editing.code) return s;
+      return {
+        ...s,
+        name: editName.trim() ? editName.trim() : s.name,
+        commencement: { year: y, type: editPeriodType, num: n },
+        tagKey: editTagKey,
+        tagLabel: updatedTagLabel,
+        isExempt: editIsExempt ? true : false,
+        exemptFinalMark:
+          editIsExempt && editExemptGrade.trim() !== "" ? clamp(toNum(editExemptGrade.trim()), 0, 100) : undefined,
+      };
+    });
+
+    await persist(next).catch(() => {});
+    Keyboard.dismiss();
+    setEditOpen(false);
+    setEditing(null);
+  }
+
+  function openRemoveModal(sub: Subject) {
+    setRemoving(sub);
+    setRemoveOpen(true);
+  }
+
+  async function confirmRemoveModal() {
+    if (!removing) return;
+    try {
+      const next = subjects.filter((s) => s.code !== removing.code);
+      await persist(next);
+
+      const plannerKey = `grade-planner:${removing.code.toUpperCase()}`;
+      await AsyncStorage.removeItem(plannerKey);
+    } catch {
+      Alert.alert("Error", "Something went wrong while removing the subject.");
+    } finally {
+      setRemoveOpen(false);
+      setRemoving(null);
+    }
+  }
+
+  const renderActiveItem = ({ item, drag, isActive }: RenderItemParams<Subject>) => {
     return (
       <SubjectRow
         item={item}
@@ -301,176 +636,563 @@ export default function SubjectsScreen() {
         isActive={isActive}
         theme={theme}
         styles={s}
+        onEdit={openEditModal}
+        onRemove={openRemoveModal}
+        canDrag={true}        
       />
     );
   };
 
-  return (
-    <View style={[s.screen]}>
-      {/* Page heading + short explainer */}
-      <Text style={s.title}>Subjects</Text>
-      <Text style={s.subtitle}>
-        Add your units, then tap to open each calculator. Long-press the ≡
-        handle to reorder.
-      </Text>
+  const CompletedSection = useMemo(() => {
+    if (completedList.length === 0) return null;
 
-      <View style={s.divider} />
+    return (
+      <View>
+        <View style={[s.completedHeaderWrap, { backgroundColor: theme.bg }]}>
+          <Text style={[s.completedHeaderText, { color: theme.textMuted }]}>Completed</Text>
+          <View style={[s.completedDivider, { backgroundColor: theme.border }]} />
+        </View>
 
-      {/* Inline add form: subject code on the left, name on the right, and an Add button */}
-      <View style={s.row}>
-        <TextInput
-          value={code}
-          onChangeText={setCode}
-          placeholder="e.g. CSE3CAP"
-          placeholderTextColor={theme.textMuted}
-          style={[s.inputCompact, { flexBasis: 130 }]}
-          autoCapitalize="characters"
-          autoCorrect={false}
-        />
-        <TextInput
-          value={name}
-          onChangeText={setName}
-          placeholder="e.g. Capstone Project"
-          placeholderTextColor={theme.textMuted}
-          style={[s.inputCompact, { flex: 1 }]}
-          autoCapitalize="words"
-          autoCorrect={false}
-        />
-        <Pressable
-          onPress={addSubject}
-          style={[s.primaryBtn, { backgroundColor: theme.primary }]}
-        >
-          <Text style={[s.primaryBtnText, { color: theme.primaryText }]}>
-            Add
-          </Text>
-        </Pressable>
+        {completedList.map((sub) => (
+          <SubjectRow
+            key={`completed:${sub.code}`}
+            item={sub}
+            isActive={false}
+            theme={theme}
+            styles={s}
+            onEdit={openEditModal}
+            onRemove={openRemoveModal}
+            canDrag={false}
+          />
+        ))}
       </View>
+    );
+  }, [completedList, theme, s]);
 
-      {/* Draggable subjects list */}
-      <DraggableFlatList<Subject>
-        data={subjects}
-        keyExtractor={(item) => item.code}
-        contentContainerStyle={{ paddingBottom: 60 }}
-        renderItem={renderItem}
-        onDragEnd={({ data }) => handleReorder(data)}
-      />
+  return (
+    // ✅ NEW: tapping anywhere outside inputs dismisses keyboard
+    <Pressable style={{ flex: 1 }} onPress={() => Keyboard.dismiss()}>
+      <View style={[s.screen]}>
+        <Text style={s.title}>Subjects</Text>
+        <Text style={s.subtitle}>
+          Tap a subject to open its grade planner. Long-press ≡ to reorder active subjects.
+        </Text>
 
-      {/* --------- Tutorial overlay (only if no subjects + not seen before) --------- */}
-      {showTutorial && (
-        <View style={s.tutorialOverlay}>
-          <View
-            style={[
-              s.tutorialCard,
-              { backgroundColor: theme.card, borderColor: theme.border },
-            ]}
-          >
-            <Text style={[s.tutorialTitle, { color: theme.text }]}>
-              Welcome to Grade Pal 👋
-            </Text>
-            <Text style={[s.tutorialBody, { color: theme.textMuted }]}>
-              Let&apos;s add your first subject:
-              {"\n\n"}1. Enter your subject code (e.g. CSE3MAD).
-              {"\n"}2. Add the subject name (e.g. Mobile App Development).
-              {"\n"}3. Tap &quot;Add&quot; to create the subject.
-              {"\n"}4. Once you added your subject, tap it to open the grade planner!
-              {"\n\n"}Enjoy! ❤️
-            </Text>
+        <View style={s.divider} />
 
-            <Pressable
-              style={[s.tutorialPrimaryBtn, { backgroundColor: theme.primary }]}
-              onPress={finishTutorial}
-            >
-              <Text
-                style={[
-                  s.tutorialPrimaryText,
-                  { color: theme.primaryText },
-                ]}
-              >
-                Got it, let&apos;s add a subject
-              </Text>
-            </Pressable>
-
-            
-          </View>
+        <View style={[s.wamCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Text style={[s.wamLabel, { color: theme.textMuted }]}>Overall WAM</Text>
+          <Text style={[s.wamValue, { color: theme.text }]}>{wamDisplay}</Text>
+          <Text style={[s.wamHelper, { color: theme.textMuted }]}>
+            {wamInfo.counted > 0
+              ? `Based on ${wamInfo.counted} counted subject${wamInfo.counted === 1 ? "" : "s"}`
+              : "No counted subjects yet"}
+          </Text>
         </View>
-      )}
 
-      {/* --------- Custom in-app feedback prompt overlay --------- */}
-      {showFeedback && !showTutorial && (
-        <View style={s.feedbackOverlay}>
-          <View
-            style={[
-              s.feedbackCard,
-              { backgroundColor: theme.card, borderColor: theme.border },
-            ]}
-          >
-            <Text style={[s.feedbackTitle, { color: theme.text }]}>
-              Enjoying Grade Pal?
-            </Text>
+        <Pressable onPress={() => setAddOpen(true)} style={[s.addBtn, { backgroundColor: theme.primary }]}>
+          <Ionicons name="add" size={18} color={theme.primaryText} />
+          <Text style={[s.addBtnText, { color: theme.primaryText }]}>Add subject</Text>
+        </Pressable>
 
-            {/* ⭐⭐⭐⭐⭐ */}
-            <View style={s.starsRow}>
-              <Text style={s.star}>⭐</Text>
-              <Text style={s.star}>⭐</Text>
-              <Text style={s.star}>⭐</Text>
-              <Text style={s.star}>⭐</Text>
-              <Text style={s.star}>⭐</Text>
-            </View>
+        <DraggableFlatList<Subject>
+          key="active-list"
+          style={{ flex: 1 }}
+          containerStyle={{ flex: 1 }}
+          data={activeList}
+          extraData={subjects}
+          keyExtractor={(item) => `active:${item.code}`}
+          renderItem={renderActiveItem}
+          onDragBegin={() => setIsDragging(true)}
+          onDragEnd={({ data }) => {
+            setIsDragging(false);
+            handleReorderActive(data);
+          }}
+          activationDistance={10}
+          autoscrollSpeed={40}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ paddingBottom: 110 }}
+          ListFooterComponent={CompletedSection}
+        />
 
-            <Text style={[s.feedbackSubtitle, { color: theme.textMuted }]}>
-              If Grade Pal has helped you understand your grades, please
-              consider leaving a quick review 💛
-            </Text>
-
-            {/* BIG PRIMARY BUTTON */}
+        {/* ADD MODAL */}
+        <Modal visible={addOpen} transparent animationType="fade" onRequestClose={() => setAddOpen(false)}>
+          {/* ✅ overlay dismisses keyboard */}
+          <Pressable style={s.modalOverlay} onPress={() => Keyboard.dismiss()}>
+            {/* ✅ inner card prevents dismiss when tapping inside */}
             <Pressable
-              style={[s.reviewButton, { backgroundColor: theme.primary }]}
-              onPress={() => {
-                // Mark as permanently done – never show again
-                AsyncStorage.setItem(FEEDBACK_PROMPTED_KEY, "true").catch(
-                  () => {}
-                );
-                setShowFeedback(false);
-                Linking.openURL(PLAY_STORE_URL).catch(() => {
-                  Alert.alert(
-                    "Unable to open Play Store",
-                    "Please search for 'Grade Pal' on the Play Store to leave a review."
+              style={[s.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}
+              onPress={() => {}}
+            >
+              <Text style={[s.modalTitle, { color: theme.text }]}>Add subject</Text>
+
+              <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 10 }]}>Subject code</Text>
+              <TextInput
+                value={code}
+                onChangeText={(t) => setCode(t.toUpperCase())}
+                placeholder="e.g. CSE3MAD"
+                placeholderTextColor={theme.textMuted}
+                style={s.inputCompact}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                returnKeyType="next"
+              />
+
+              <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 10 }]}>Subject name</Text>
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                placeholder="e.g. Mobile App Development"
+                placeholderTextColor={theme.textMuted}
+                style={s.inputCompact}
+                autoCapitalize="words"
+                autoCorrect={false}
+                returnKeyType="done"
+              />
+
+              <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 12 }]}>Commencement period</Text>
+
+              <View style={s.inlineRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.microLabel, { color: theme.textMuted }]}>Year</Text>
+                  <TextInput
+                    value={year}
+                    onChangeText={(t) => setYear(t.replace(/[^0-9]/g, ""))}
+                    placeholder="2027"
+                    placeholderTextColor={theme.textMuted}
+                    keyboardType={Platform.OS === "ios" ? "number-pad" : "numeric"}
+                    inputMode="numeric"
+                    style={s.inputCompact}
+                  />
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.microLabel, { color: theme.textMuted }]}>Number</Text>
+                  <View style={s.numRow}>
+                    {Array.from({ length: maxNumForType(periodType) }, (_, i) => i + 1).map((n) => {
+                      const active = periodNum === n;
+                      return (
+                        <Pressable
+                          key={n}
+                          onPress={() => setPeriodNum(n)}
+                          style={[
+                            s.numChip,
+                            { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card },
+                          ]}
+                        >
+                          <Text style={[s.numChipText, { color: active ? theme.primary : theme.textMuted }]}>{n}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              </View>
+
+              <View style={{ marginTop: 10 }}>
+                <Text style={[s.microLabel, { color: theme.textMuted }]}>Type</Text>
+                <View style={s.chipsRow}>
+                  {(["Semester", "Trimester", "Term"] as PeriodType[]).map((pt) => {
+                    const active = periodType === pt;
+                    return (
+                      <Pressable
+                        key={pt}
+                        onPress={() => {
+                          setPeriodType(pt);
+                          const mx = maxNumForType(pt);
+                          setPeriodNum((prev) => Math.min(prev, mx));
+                        }}
+                        style={[
+                          s.chip,
+                          { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card },
+                        ]}
+                      >
+                        <Text style={[s.chipText, { color: active ? theme.primary : theme.textMuted }]}>{pt}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                <Text style={[s.helperText, { color: theme.textMuted }]}>Example: 2027 • Semester 1</Text>
+              </View>
+
+              <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 12 }]}>Tag</Text>
+              <View style={s.chipsRow}>
+                {([
+                  { key: "core", label: "Core" },
+                  { key: "major", label: "Major" },
+                  { key: "minor", label: "Minor" },
+                  { key: "elective", label: "Elective" },
+                  { key: "custom", label: "Custom" },
+                ] as { key: TagKey; label: string }[]).map((x) => {
+                  const active = tagKey === x.key;
+                  const tv = getTagVisual(x.key);
+                  return (
+                    <Pressable
+                      key={x.key}
+                      onPress={() => setTagKey(x.key)}
+                      style={[
+                        s.chip,
+                        { borderColor: active ? tv.color : theme.border, backgroundColor: theme.card },
+                      ]}
+                    >
+                      <Text style={[s.chipText, { color: active ? tv.color : theme.textMuted }]}>{x.label}</Text>
+                    </Pressable>
                   );
-                });
-              }}
-            >
-              <Text
-                style={[
-                  s.reviewButtonText,
-                  { color: theme.primaryText },
-                ]}
-              >
-                Leave a Review
-              </Text>
-            </Pressable>
+                })}
+              </View>
 
-            {/* LOW-EMPHASIS LINK UNDER BUTTON */}
-            <Pressable
-              onPress={() => {
-                // Snooze for 4 weeks
-                AsyncStorage.setItem(
-                  FEEDBACK_SNOOZE_KEY,
-                  String(Date.now())
-                ).catch(() => {});
-                setShowFeedback(false);
-              }}
-              style={s.maybeLaterWrapper}
-            >
-              <Text
-                style={[s.maybeLaterText, { color: theme.textMuted }]}
-              >
-                Maybe later
-              </Text>
+              {tagKey === "custom" && (
+                <TextInput
+                  value={customTag}
+                  onChangeText={setCustomTag}
+                  placeholder="Enter custom tag (e.g. Minor)"
+                  placeholderTextColor={theme.textMuted}
+                  style={[s.inputCompact, { marginTop: 10 }]}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                />
+              )}
+
+              <View style={{ marginTop: 14 }}>
+                <Pressable
+                  onPress={() => {
+                    setIsExempt((p) => !p);
+                    if (isExempt) setExemptGrade("");
+                  }}
+                  style={[
+                    s.togglePill,
+                    { borderColor: isExempt ? theme.primary : theme.border, backgroundColor: theme.card },
+                  ]}
+                >
+                  <Text style={[s.toggleText, { color: isExempt ? theme.primary : theme.textMuted }]}>
+                    {isExempt ? "Exempt subject ✓" : "Exempt subject"}
+                  </Text>
+                </Pressable>
+
+                {isExempt && (
+                  <View style={{ marginTop: 10 }}>
+                    <Text style={[s.microLabel, { color: theme.textMuted }]}>Exempt grade (optional)</Text>
+                    <TextInput
+                      value={exemptGrade}
+                      onChangeText={(t) => setExemptGrade(t.replace(/[^0-9.]/g, ""))}
+                      placeholder="e.g. 75"
+                      placeholderTextColor={theme.textMuted}
+                      keyboardType={Platform.OS === "ios" ? "decimal-pad" : "number-pad"}
+                      inputMode="decimal"
+                      style={s.inputCompact}
+                    />
+                    <Text style={[s.helperText, { color: theme.textMuted }]}>
+                      Leave blank if no grade was awarded (it won’t count toward WAM).
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={s.modalButtonsRow}>
+                <Pressable
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setAddOpen(false);
+                    resetAddForm();
+                  }}
+                  style={[s.modalBtn, { backgroundColor: theme.border }]}
+                >
+                  <Text style={[s.modalBtnText, { color: theme.text }]}>Cancel</Text>
+                </Pressable>
+
+                <Pressable onPress={addSubject} style={[s.modalBtn, { backgroundColor: theme.primary }]}>
+                  <Text style={[s.modalBtnText, { color: theme.primaryText }]}>Add</Text>
+                </Pressable>
+              </View>
             </Pressable>
+          </Pressable>
+        </Modal>
+
+        {/* EDIT MODAL */}
+        <Modal visible={editOpen} transparent animationType="fade" onRequestClose={() => setEditOpen(false)}>
+          <Pressable style={s.modalOverlay} onPress={() => Keyboard.dismiss()}>
+            <Pressable
+              style={[s.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}
+              onPress={() => {}}
+            >
+              <Text style={[s.modalTitle, { color: theme.text }]}>Edit subject</Text>
+              <Text style={[s.modalSub, { color: theme.textMuted }]}>{editing?.code}</Text>
+
+              <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 10 }]}>Name</Text>
+              <TextInput
+                value={editName}
+                onChangeText={setEditName}
+                placeholder="Subject name"
+                placeholderTextColor={theme.textMuted}
+                style={s.inputCompact}
+                autoCapitalize="words"
+                autoCorrect={false}
+              />
+
+              <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 12 }]}>Commencement period</Text>
+
+              <View style={s.inlineRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.microLabel, { color: theme.textMuted }]}>Year</Text>
+                  <TextInput
+                    value={editYear}
+                    onChangeText={(t) => setEditYear(t.replace(/[^0-9]/g, ""))}
+                    placeholder="2027"
+                    placeholderTextColor={theme.textMuted}
+                    keyboardType={Platform.OS === "ios" ? "number-pad" : "numeric"}
+                    inputMode="numeric"
+                    style={s.inputCompact}
+                  />
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.microLabel, { color: theme.textMuted }]}>Number</Text>
+                  <View style={s.numRow}>
+                    {Array.from({ length: maxNumForType(editPeriodType) }, (_, i) => i + 1).map((n) => {
+                      const active = editPeriodNum === n;
+                      return (
+                        <Pressable
+                          key={n}
+                          onPress={() => setEditPeriodNum(n)}
+                          style={[
+                            s.numChip,
+                            { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card },
+                          ]}
+                        >
+                          <Text style={[s.numChipText, { color: active ? theme.primary : theme.textMuted }]}>{n}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              </View>
+
+              <View style={{ marginTop: 10 }}>
+                <Text style={[s.microLabel, { color: theme.textMuted }]}>Type</Text>
+                <View style={s.chipsRow}>
+                  {(["Semester", "Trimester", "Term"] as PeriodType[]).map((pt) => {
+                    const active = editPeriodType === pt;
+                    return (
+                      <Pressable
+                        key={pt}
+                        onPress={() => {
+                          setEditPeriodType(pt);
+                          const mx = maxNumForType(pt);
+                          setEditPeriodNum((prev) => Math.min(prev, mx));
+                        }}
+                        style={[
+                          s.chip,
+                          { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card },
+                        ]}
+                      >
+                        <Text style={[s.chipText, { color: active ? theme.primary : theme.textMuted }]}>{pt}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 12 }]}>Tag</Text>
+              <View style={s.chipsRow}>
+                {([
+                  { key: "core", label: "Core" },
+                  { key: "major", label: "Major" },
+                  { key: "minor", label: "Minor" },
+                  { key: "elective", label: "Elective" },
+                  { key: "custom", label: "Custom" },
+                ] as { key: TagKey; label: string }[]).map((x) => {
+                  const active = editTagKey === x.key;
+                  const tv = getTagVisual(x.key);
+                  return (
+                    <Pressable
+                      key={x.key}
+                      onPress={() => setEditTagKey(x.key)}
+                      style={[
+                        s.chip,
+                        { borderColor: active ? tv.color : theme.border, backgroundColor: theme.card },
+                      ]}
+                    >
+                      <Text style={[s.chipText, { color: active ? tv.color : theme.textMuted }]}>{x.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              {editTagKey === "custom" && (
+                <TextInput
+                  value={editCustomTag}
+                  onChangeText={setEditCustomTag}
+                  placeholder="Enter custom tag"
+                  placeholderTextColor={theme.textMuted}
+                  style={[s.inputCompact, { marginTop: 10 }]}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                />
+              )}
+
+              <View style={{ marginTop: 14 }}>
+                <Pressable
+                  onPress={() => {
+                    setEditIsExempt((p) => !p);
+                    if (editIsExempt) setEditExemptGrade("");
+                  }}
+                  style={[
+                    s.togglePill,
+                    { borderColor: editIsExempt ? theme.primary : theme.border, backgroundColor: theme.card },
+                  ]}
+                >
+                  <Text style={[s.toggleText, { color: editIsExempt ? theme.primary : theme.textMuted }]}>
+                    {editIsExempt ? "Exempt subject ✓" : "Exempt subject"}
+                  </Text>
+                </Pressable>
+
+                {editIsExempt && (
+                  <View style={{ marginTop: 10 }}>
+                    <Text style={[s.microLabel, { color: theme.textMuted }]}>Exempt grade (optional)</Text>
+                    <TextInput
+                      value={editExemptGrade}
+                      onChangeText={(t) => setEditExemptGrade(t.replace(/[^0-9.]/g, ""))}
+                      placeholder="e.g. 75"
+                      placeholderTextColor={theme.textMuted}
+                      keyboardType={Platform.OS === "ios" ? "decimal-pad" : "number-pad"}
+                      inputMode="decimal"
+                      style={s.inputCompact}
+                    />
+                  </View>
+                )}
+              </View>
+
+              <View style={s.modalButtonsRow}>
+                <Pressable
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setEditOpen(false);
+                    setEditing(null);
+                  }}
+                  style={[s.modalBtn, { backgroundColor: theme.border }]}
+                >
+                  <Text style={[s.modalBtnText, { color: theme.text }]}>Cancel</Text>
+                </Pressable>
+
+                <Pressable onPress={saveEditModal} style={[s.modalBtn, { backgroundColor: theme.primary }]}>
+                  <Text style={[s.modalBtnText, { color: theme.primaryText }]}>Save</Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        {/* REMOVE MODAL */}
+        <Modal
+          visible={removeOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            setRemoveOpen(false);
+            setRemoving(null);
+          }}
+        >
+          <Pressable style={s.modalOverlay} onPress={() => {}}>
+            <View style={[s.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Text style={[s.modalTitle, { color: theme.text }]}>Remove subject</Text>
+              <Text style={[s.modalSub, { color: theme.textMuted }]}>
+                {removing ? `${removing.code} — ${removing.name}` : ""}
+              </Text>
+
+              <View style={{ marginTop: 12 }}>
+                <Text style={[s.helperText, { color: theme.textMuted }]}>
+                  This will also delete its saved grade planner data.
+                </Text>
+              </View>
+
+              <View style={s.modalButtonsRow}>
+                <Pressable
+                  onPress={() => {
+                    setRemoveOpen(false);
+                    setRemoving(null);
+                  }}
+                  style={[s.modalBtn, { backgroundColor: theme.border }]}
+                >
+                  <Text style={[s.modalBtnText, { color: theme.text }]}>Cancel</Text>
+                </Pressable>
+
+                <Pressable onPress={confirmRemoveModal} style={[s.modalBtn, { backgroundColor: theme.primary }]}>
+                  <Text style={[s.modalBtnText, { color: theme.primaryText }]}>Remove</Text>
+                </Pressable>
+              </View>
+            </View>
+          </Pressable>
+        </Modal>
+
+        {/* Tutorial overlay */}
+        {showTutorial && (
+          <View style={s.tutorialOverlay}>
+            <View style={[s.tutorialCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Text style={[s.tutorialTitle, { color: theme.text }]}>Welcome to Grade Pal 👋</Text>
+              <Text style={[s.tutorialBody, { color: theme.textMuted }]}>
+                Start by adding your first subject:
+                {"\n\n"}1. Tap “Add subject”
+                {"\n"}2. Enter subject code + name
+                {"\n"}3. Select the commencement period + tag
+                {"\n"}4. Tap Add
+                {"\n\n"}Then tap the subject to open the grade planner. ❤️
+              </Text>
+
+              <Pressable style={[s.tutorialPrimaryBtn, { backgroundColor: theme.primary }]} onPress={finishTutorial}>
+                <Text style={[s.tutorialPrimaryText, { color: theme.primaryText }]}>Got it</Text>
+              </Pressable>
+            </View>
           </View>
-        </View>
-      )}
-    </View>
+        )}
+
+        {/* Feedback prompt overlay */}
+        {showFeedback && !showTutorial && (
+          <View style={s.feedbackOverlay}>
+            <View style={[s.feedbackCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Text style={[s.feedbackTitle, { color: theme.text }]}>Enjoying Grade Pal?</Text>
+
+              <View style={s.starsRow}>
+                <Text style={s.star}>⭐</Text>
+                <Text style={s.star}>⭐</Text>
+                <Text style={s.star}>⭐</Text>
+                <Text style={s.star}>⭐</Text>
+                <Text style={s.star}>⭐</Text>
+              </View>
+
+              <Text style={[s.feedbackSubtitle, { color: theme.textMuted }]}>
+                If Grade Pal has helped you understand your grades, please consider leaving a quick review 💛
+              </Text>
+
+              <Pressable
+                style={[s.reviewButton, { backgroundColor: theme.primary }]}
+                onPress={() => {
+                  AsyncStorage.setItem(FEEDBACK_PROMPTED_KEY, "true").catch(() => {});
+                  setShowFeedback(false);
+                  Linking.openURL(PLAY_STORE_URL).catch(() => {
+                    Alert.alert(
+                      "Unable to open Play Store",
+                      "Please search for 'Grade Pal' on the Play Store to leave a review."
+                    );
+                  });
+                }}
+              >
+                <Text style={[s.reviewButtonText, { color: theme.primaryText }]}>Leave a Review</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  AsyncStorage.setItem(FEEDBACK_SNOOZE_KEY, String(Date.now())).catch(() => {});
+                  setShowFeedback(false);
+                }}
+                style={s.maybeLaterWrapper}
+              >
+                <Text style={[s.maybeLaterText, { color: theme.textMuted }]}>Maybe later</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+      </View>
+    </Pressable>
   );
 }
 
@@ -500,13 +1222,170 @@ const makeStyles = (t: any) =>
       backgroundColor: t.border,
       marginBottom: 12,
     },
-    row: {
+
+    wamCard: {
+      borderWidth: 1,
+      borderRadius: 18,
+      padding: 14,
+      marginBottom: 12,
+    },
+    wamLabel: {
+      fontSize: 13,
+      fontWeight: "600",
+      marginBottom: 6,
+    },
+    wamValue: {
+      fontSize: 34,
+      fontWeight: "900",
+      letterSpacing: 0.3,
+    },
+    wamHelper: {
+      marginTop: 6,
+      fontSize: 12,
+      lineHeight: 16,
+    },
+
+    addBtn: {
+      height: 48,
+      borderRadius: 16,
+      alignItems: "center",
+      justifyContent: "center",
+      flexDirection: "row",
+      gap: 8,
+      marginBottom: 12,
+    },
+    addBtnText: {
+      fontSize: 14,
+      fontWeight: "800",
+    },
+
+    subjectCard: {
+      borderWidth: 1,
+      borderRadius: 16,
+      padding: 14,
+      marginBottom: 10,
+      flexDirection: "row",
+      alignItems: "flex-start",
+      borderLeftWidth: 6,
+    },
+    completedCard: {
+      opacity: 0.88,
+    },
+    subjectTopRow: {
       flexDirection: "row",
       alignItems: "center",
+      justifyContent: "space-between",
       gap: 10,
-      marginBottom: 18,
     },
-    // Compact inputs so all three controls comfortably fit on one row
+    subjectCode: {
+      color: t.text,
+      fontWeight: "800",
+      fontSize: 15,
+    },
+    subjectName: {
+      color: t.textMuted,
+      fontSize: 15,
+      fontWeight: "400",
+    },
+    metaText: {
+      fontSize: 12,
+      fontWeight: "600",
+    },
+    metaTiny: {
+      fontSize: 11,
+      fontWeight: "600",
+      opacity: 0.85,
+      marginTop: 2,
+    },
+
+    tagPill: {
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+      borderRadius: 999,
+      borderWidth: 1,
+      maxWidth: 120,
+    },
+    tagText: {
+      fontSize: 11,
+      fontWeight: "900",
+      letterSpacing: 0.2,
+    },
+
+    subjectBottomRow: {
+      marginTop: 10,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+    },
+    periodText: {
+      flex: 1,
+      fontSize: 12,
+      fontWeight: "800",
+    },
+    actionsRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginLeft: 10,
+    },
+    actionIconBtn: {
+      width: 34,
+      height: 34,
+      borderRadius: 999,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: t.border,
+      backgroundColor: t.bg,
+    },
+
+    completedHeaderWrap: {
+      marginTop: 10,
+      marginBottom: 10,
+      paddingTop: 6,
+      paddingBottom: 6,
+    },
+    completedHeaderText: {
+      fontSize: 12,
+      fontWeight: "800",
+      letterSpacing: 0.3,
+      textTransform: "uppercase",
+      marginBottom: 8,
+    },
+    completedDivider: {
+      height: 1,
+      opacity: 0.8,
+    },
+
+    /* Modal */
+    modalOverlay: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: "rgba(0,0,0,0.55)",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 22,
+    },
+    modalCard: {
+      width: "100%",
+      borderRadius: 20,
+      padding: 16,
+      borderWidth: 1,
+    },
+    modalTitle: {
+      fontSize: 18,
+      fontWeight: "900",
+    },
+    modalSub: {
+      marginTop: 2,
+      fontSize: 12,
+      fontWeight: "700",
+    },
+
     inputCompact: {
       minHeight: 48,
       paddingHorizontal: 14,
@@ -517,51 +1396,91 @@ const makeStyles = (t: any) =>
       backgroundColor: t.card,
       color: t.text,
       fontSize: 14,
-      flexShrink: 1,
-    },
-    // Each subject row card
-    subjectCard: {
-      backgroundColor: t.card,
-      borderColor: t.border,
-      borderWidth: 1,
-      borderRadius: 16,
-      padding: 14,
-      marginBottom: 10,
-      flexDirection: "row",
-      alignItems: "center",
-    },
-    // Bold code (e.g., CSE3MAD)
-    subjectCode: {
-      color: t.text,
-      fontWeight: "700",
-      fontSize: 15,
-    },
-    // Lighter title that follows the en dash
-    subjectName: {
-      color: t.textMuted,
-      fontSize: 15,
-      fontWeight: "400",
-    },
-    // Drag handle on the right
-    dragHandle: {
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      marginLeft: 8,
-    },
-    // Primary “Add” button next to the inputs
-    primaryBtn: {
-      height: 48,
-      borderRadius: 14,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: 16,
-    },
-    primaryBtnText: {
-      fontSize: 14,
-      fontWeight: "700",
     },
 
-    /* ---------- Tutorial styles ---------- */
+    smallLabel: {
+      fontSize: 12,
+      fontWeight: "800",
+      marginBottom: 6,
+    },
+    microLabel: {
+      fontSize: 11,
+      fontWeight: "800",
+      marginBottom: 6,
+    },
+
+    inlineRow: {
+      flexDirection: "row",
+      gap: 10,
+      alignItems: "flex-start",
+      marginTop: 6,
+    },
+
+    chipsRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+    },
+    chip: {
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      borderRadius: 999,
+      borderWidth: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    chipText: {
+      fontSize: 12,
+      fontWeight: "900",
+    },
+
+    numRow: {
+      flexDirection: "row",
+      gap: 8,
+      flexWrap: "wrap",
+    },
+    numChip: {
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+      minWidth: 44,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    numChipText: {
+      fontSize: 12,
+      fontWeight: "900",
+    },
+
+    togglePill: {
+      borderWidth: 1,
+      borderRadius: 999,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      alignSelf: "flex-start",
+    },
+    toggleText: { fontSize: 12, fontWeight: "900" },
+    helperText: { marginTop: 6, fontSize: 12, lineHeight: 16 },
+
+    modalButtonsRow: {
+      flexDirection: "row",
+      gap: 10,
+      marginTop: 16,
+    },
+    modalBtn: {
+      flex: 1,
+      paddingVertical: 12,
+      borderRadius: 16,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    modalBtnText: {
+      fontSize: 14,
+      fontWeight: "900",
+    },
+
+    /* Tutorial */
     tutorialOverlay: {
       position: "absolute",
       top: 0,
@@ -583,7 +1502,7 @@ const makeStyles = (t: any) =>
     },
     tutorialTitle: {
       fontSize: 18,
-      fontWeight: "700",
+      fontWeight: "800",
       marginBottom: 8,
       textAlign: "center",
     },
@@ -602,19 +1521,10 @@ const makeStyles = (t: any) =>
     },
     tutorialPrimaryText: {
       fontSize: 15,
-      fontWeight: "700",
-    },
-    tutorialSkipBtn: {
-      marginTop: 8,
-      paddingVertical: 4,
-      paddingHorizontal: 8,
-    },
-    tutorialSkipText: {
-      fontSize: 13,
-      textDecorationLine: "underline",
+      fontWeight: "900",
     },
 
-    /* ---------- Feedback modal styles ---------- */
+    /* Feedback modal */
     feedbackOverlay: {
       position: "absolute",
       top: 0,
@@ -635,7 +1545,7 @@ const makeStyles = (t: any) =>
     },
     feedbackTitle: {
       fontSize: 20,
-      fontWeight: "800",
+      fontWeight: "900",
       marginBottom: 6,
     },
     starsRow: {
@@ -662,7 +1572,7 @@ const makeStyles = (t: any) =>
     },
     reviewButtonText: {
       fontSize: 16,
-      fontWeight: "800",
+      fontWeight: "900",
     },
     maybeLaterWrapper: {
       marginTop: 10,
@@ -670,6 +1580,6 @@ const makeStyles = (t: any) =>
     },
     maybeLaterText: {
       fontSize: 13,
-      fontWeight: "600",
+      fontWeight: "700",
     },
   });

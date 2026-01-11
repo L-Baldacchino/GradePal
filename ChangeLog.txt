@@ -2,6 +2,32 @@
 
 Last updated: 02 January 2026  
 Developer: Luke Baldacchino / Tera Apps  
+____________________________________________________________
+
+V 1.1.0 – Minor updates
+
+This is an excited update as we are finally approved to publish the application onto the Play Store. Due to this, this release will come with additional features, and UI/UX improvements.
+
+- Planner added
+  - Added a new Planner tab for tracking upcoming study items and key dates.
+
+- Home page
+  - UI improved:
+    - Colour added per tag
+    - Can tag subjects with subject Type
+    - Can associate a study type (semester, trimester, term)
+    - General UI/UX improvements
+  - Can add exempt subject (With or without grade)
+  - WAM is now calculated
+  - Can only re-order non-completed subjects
+    - Completed subjects are fixed in position
+
+- Subject page
+  - Auto calculate final exam mark based on final grade
+  - Overal UI/UX improvements
+
+
+____________________________________________________________
 
 V 1.0.4 – Minor updates
 
