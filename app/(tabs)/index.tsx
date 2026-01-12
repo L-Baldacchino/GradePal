@@ -328,12 +328,12 @@ const SubjectRow: React.FC<SubjectRowProps> = ({
               </Text>
 
               <View style={styles.actionsRow}>
-                {/* ✅ Edit button restored */}
+                {/* Edit button restored */}
                 <Pressable onPress={() => onEdit(item)} style={styles.actionIconBtn} hitSlop={10}>
                   <Ionicons name="create-outline" size={18} color={theme.textMuted} />
                 </Pressable>
 
-                {/* ✅ Trash removed */}
+                {/* Trash removed */}
 
                 {canDrag ? (
                   <Pressable onLongPress={drag} delayLongPress={140} style={styles.actionIconBtn} hitSlop={10}>
@@ -631,7 +631,7 @@ export default function SubjectsScreen() {
     closeEditModal();
   }
 
-  // ✅ Swipe-delete with warning confirm
+  //  Swipe-delete with warning confirm
   const requestDeleteSubject = useCallback(
     (sub: Subject, closeSwipe: () => void) => {
       Alert.alert(
@@ -709,7 +709,7 @@ export default function SubjectsScreen() {
     );
   }, [completedList, theme, s, requestDeleteSubject]);
 
-  // ✅ Put the header inside the list so blank space scroll works
+  //  Put the header inside the list so blank space scroll works
   const ListHeader = useMemo(() => {
     return (
       <View>
@@ -760,7 +760,7 @@ export default function SubjectsScreen() {
         onScrollBeginDrag={() => Keyboard.dismiss()}
         ListHeaderComponent={ListHeader}
         ListFooterComponent={CompletedSection}
-        // ✅ flexGrow makes the "blank area" part of the scrollable surface
+        //  flexGrow makes the "blank area" part of the scrollable surface
         contentContainerStyle={{
           paddingHorizontal: 16,
           paddingTop: 12,
@@ -1226,7 +1226,7 @@ const makeStyles = (t: any) =>
       marginBottom: 10,
     },
 
-    // ✅ red underlay full-width behind the card
+    // red underlay full-width behind the card
     deleteUnderlay: {
       flex: 1,
       backgroundColor: "#E25563",

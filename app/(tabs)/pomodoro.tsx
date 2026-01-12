@@ -70,7 +70,7 @@ export default function PomodoroScreen() {
       const raw = await AsyncStorage.getItem(SUBJECTS_KEY);
       const list: Subject[] = raw ? JSON.parse(raw) : [];
 
-      // ✅ FILTER OUT COMPLETED SUBJECTS for the selector
+      // FILTER OUT COMPLETED SUBJECTS for the selector
       const active = list.filter((s) => !isCompletedSubjectLike(s));
       setSubjects(active);
 

@@ -350,7 +350,7 @@ function SwipeToDeleteRow({
   };
 
   return (
-    // ✅ This wrapper makes the red underlay fill cleanly under the whole card
+    // This wrapper makes the red underlay fill cleanly under the whole card
     <View style={[rowStyles.swipeWrap, { borderColor: theme.border, backgroundColor: theme.card }]}>
       <Swipeable
         ref={swipeRef}
@@ -971,7 +971,7 @@ const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
 
     checkbox: { paddingTop: 2 },
 
-    // ✅ centered modal
+    // centered modal
     modalOverlay: {
       flex: 1,
       backgroundColor: "rgba(0,0,0,0.6)",
@@ -1021,7 +1021,7 @@ const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
       justifyContent: "center",
     },
 
-    // ✅ 2-column tag grid so all 6 are visible nicely
+    // 2-column tag grid so all 6 are visible nicely
     kindGrid: {
       flexDirection: "row",
       flexWrap: "wrap",

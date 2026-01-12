@@ -948,7 +948,7 @@ export default function SubjectPlannerScreen() {
               </View>
             </View>
 
-            {/* ✅ NEW: swipe hint */}
+            {/* NEW: swipe hint */}
             <Text style={[s.swipeHint, { color: theme.textMuted }]}>Swipe left to delete item</Text>
           </View>
         }
@@ -1045,7 +1045,7 @@ function AssessmentRow({
 
   const dueDisplay = isoToDisplay(item.dueDateISO);
 
-  // ✅ NEW: full-width red underlay + instant delete on swipe open
+  // NEW: full-width red underlay + instant delete on swipe open
   const renderRightActions = () => (
     <View style={[s.deleteUnderlay]}>
       <Text style={s.deleteText}>Delete</Text>
@@ -1184,7 +1184,7 @@ function AssessmentRow({
             </Text>
           </View>
 
-          {/* ✅ REMOVED: trashcan delete button (now swipe-to-delete) */}
+          {/* REMOVED: trashcan delete button (now swipe-to-delete) */}
         </Animated.View>
       </Swipeable>
     </View>
@@ -1431,7 +1431,7 @@ const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
       textAlign: "left",
     },
 
-    // ✅ swipe underlay
+    // swipe underlay
     deleteUnderlay: {
       flex: 1,
       backgroundColor: "#E25563",
