@@ -5,7 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useFocusEffect } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -18,6 +18,8 @@ import {
   TextInput,
   View,
 } from "react-native";
+
+import { Swipeable } from "react-native-gesture-handler";
 
 import { getTimeline, removeTimelineEvent, sortTimeline, upsertTimelineEvent } from "../../_lib/timelineStorage";
 import { TimelineEvent } from "../../_lib/timelineTypes";
@@ -64,15 +66,6 @@ function isoToDisplay(iso?: string) {
   const mon = MMM[dt.getMonth()] ?? "???";
   const yyyy = dt.getFullYear();
   return `${dd}-${mon}-${yyyy}`;
-}
-
-function clamp(n: number, lo = 0, hi = 100) {
-  return Math.max(lo, Math.min(hi, n));
-}
-
-function toNum(s?: string) {
-  const n = Number(String(s ?? "").replace(/,/g, "."));
-  return Number.isNaN(n) ? 0 : n;
 }
 
 // -------------------------------
@@ -331,6 +324,87 @@ function SubjectCodePicker({
 }
 
 // -------------------------------
+// Swipe row wrapper (tap "Delete" to confirm)
+// -------------------------------
+// -------------------------------
+// Swipe row wrapper (swipe + release = delete, NO confirm)
+// -------------------------------
+function SwipeToDeleteRow({
+  children,
+  theme,
+  onDelete,
+}: {
+  children: React.ReactNode;
+  theme: any;
+  onDelete: () => Promise<void> | void;
+}) {
+  const swipeRef = useRef<Swipeable | null>(null);
+  const deletingRef = useRef(false);
+
+  const renderRightActions = () => {
+    return (
+      <View style={rowStyles.underlayFull}>
+        <Text style={rowStyles.deleteText}>Delete</Text>
+      </View>
+    );
+  };
+
+  return (
+    // ✅ This wrapper makes the red underlay fill cleanly under the whole card
+    <View style={[rowStyles.swipeWrap, { borderColor: theme.border, backgroundColor: theme.card }]}>
+      <Swipeable
+        ref={swipeRef}
+        overshootRight={false}
+        renderRightActions={renderRightActions}
+        rightThreshold={48}
+        friction={2}
+        onSwipeableOpen={async (direction) => {
+          if (direction !== "right") return;
+          if (deletingRef.current) return;
+          deletingRef.current = true;
+
+          try {
+            await onDelete();
+          } finally {
+            swipeRef.current?.close();
+            deletingRef.current = false;
+          }
+        }}
+      >
+        {children}
+      </Swipeable>
+    </View>
+  );
+}
+
+const rowStyles = StyleSheet.create({
+  // wrapper around swipeable so the underlay can fill full width + clip to radius
+  swipeWrap: {
+    borderRadius: 18,       // match your itemCard radius
+    overflow: "hidden",     // IMPORTANT: keeps the red underlay full width under the card
+    borderWidth: 1,
+    marginBottom: 12,       // match your spacing (remove from itemCard if needed)
+  },
+
+  // full-width underlay behind the card
+  underlayFull: {
+    flex: 1,
+    backgroundColor: "#E25563",
+    justifyContent: "center",
+    alignItems: "flex-end",
+    paddingRight: 22,
+  },
+
+  deleteText: {
+    color: "#fff",
+    fontWeight: "900",
+    fontSize: 14,
+    letterSpacing: 0.2,
+  },
+});
+
+
+// -------------------------------
 // Main screen
 // -------------------------------
 export default function PlannerScreen() {
@@ -345,7 +419,6 @@ export default function PlannerScreen() {
   const [showEdit, setShowEdit] = useState(false);
   const [editing, setEditing] = useState<TimelineEvent | null>(null);
 
-  // Load UI prefs (hide completed)
   useEffect(() => {
     (async () => {
       try {
@@ -360,7 +433,6 @@ export default function PlannerScreen() {
     AsyncStorage.setItem(PLANNER_UI_KEY, JSON.stringify({ hideCompleted })).catch(() => {});
   }, [hideCompleted]);
 
-  // Focus: refresh subjects + timeline
   useFocusEffect(
     useCallback(() => {
       let alive = true;
@@ -410,29 +482,23 @@ export default function PlannerScreen() {
     await refreshTimeline();
   }
 
-  async function confirmDelete(e: TimelineEvent) {
-    Alert.alert("Delete item", `Delete "${(e as any).title ?? "item"}"?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          await removeTimelineEvent((e as any).id);
-          await refreshTimeline();
-        },
-      },
-    ]);
+  async function deleteItem(e: TimelineEvent) {
+    await removeTimelineEvent((e as any).id);
+    await refreshTimeline();
   }
 
   const Header = (
     <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, gap: 10 }}>
       <View style={s.headerCard}>
         <Text style={s.headerTitle}>Planner</Text>
+
         <Text style={s.headerSubtitle}>
           {hideCompleted
             ? `Showing incomplete items • ${completedCount} completed hidden`
             : `Showing all items • ${completedCount} completed`}
         </Text>
+
+        <Text style={[s.headerHint, { color: theme.textMuted }]}>Swipe left to delete item</Text>
 
         <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
           <Pressable onPress={() => setShowAdd(true)} style={[s.primaryBtn, { backgroundColor: theme.primary }]}>
@@ -477,69 +543,71 @@ export default function PlannerScreen() {
             </View>
           ) : (
             visibleTimeline.map((e) => {
-              const kind = (((e as any).kind ?? "custom") as PlannerKind) || "custom";
+              const kind = ((((e as any).kind ?? "custom") as PlannerKind) || "custom") as PlannerKind;
               const accent = kindAccent(kind, theme);
 
               return (
-                <Pressable
+                <SwipeToDeleteRow
                   key={(e as any).id}
-                  onPress={() => openEdit(e)}
-                  style={[s.itemCard, { borderLeftColor: accent }]}
+                  theme={theme}
+                  onDelete={async () => {
+                    await deleteItem(e);
+                                  }}
                 >
-                  <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
-                    <Pressable onPress={() => toggleComplete(e)} hitSlop={10} style={s.checkbox}>
-                      <Ionicons
-                        name={isEventCompleted(e) ? "checkbox-outline" : "square-outline"}
-                        size={22}
-                        color={isEventCompleted(e) ? theme.success : theme.textMuted}
-                      />
-                    </Pressable>
+                  <Pressable onPress={() => openEdit(e)} style={[s.itemCard, { borderLeftColor: accent }]}>
+                    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+                      <Pressable onPress={() => toggleComplete(e)} hitSlop={10} style={s.checkbox}>
+                        <Ionicons
+                          name={isEventCompleted(e) ? "checkbox-outline" : "square-outline"}
+                          size={22}
+                          color={isEventCompleted(e) ? theme.success : theme.textMuted}
+                        />
+                      </Pressable>
 
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={[
-                          s.itemTitle,
-                          isEventCompleted(e) && { opacity: 0.55, textDecorationLine: "line-through" },
-                        ]}
-                      >
-                        {String((e as any).title ?? "")}
-                      </Text>
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={[
+                            s.itemTitle,
+                            isEventCompleted(e) && { opacity: 0.55, textDecorationLine: "line-through" },
+                          ]}
+                        >
+                          {String((e as any).title ?? "")}
+                        </Text>
 
-                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
-                        <View style={[s.pill, { borderColor: accent }]}>
-                          <Text style={[s.pillText, { color: accent }]}>
-                            {kind === "custom" ? String((e as any).customLabel?.trim() || "Custom") : kindLabel(kind)}
-                          </Text>
-                        </View>
-
-                        {(String((e as any).subjectCode ?? "").trim() !== "") && (
-                          <View style={[s.pill, { borderColor: theme.primary }]}>
-                            <Text style={[s.pillText, { color: theme.primary }]}>
-                              {String((e as any).subjectCode).toUpperCase()}
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+                          <View style={[s.pill, { borderColor: accent }]}>
+                            <Text style={[s.pillText, { color: accent }]}>
+                              {kind === "custom"
+                                ? String((e as any).customLabel?.trim() || "Custom")
+                                : kindLabel(kind)}
                             </Text>
                           </View>
-                        )}
 
-                        {(String((e as any).dateISO ?? "").trim() !== "") && (
-                          <View style={s.pill}>
-                            <Ionicons name="calendar-outline" size={14} color={theme.textMuted} />
-                            <Text style={s.pillText}>{isoToDisplay(String((e as any).dateISO))}</Text>
-                          </View>
+                          {(String((e as any).subjectCode ?? "").trim() !== "") && (
+                            <View style={[s.pill, { borderColor: theme.primary }]}>
+                              <Text style={[s.pillText, { color: theme.primary }]}>
+                                {String((e as any).subjectCode).toUpperCase()}
+                              </Text>
+                            </View>
+                          )}
+
+                          {(String((e as any).dateISO ?? "").trim() !== "") && (
+                            <View style={s.pill}>
+                              <Ionicons name="calendar-outline" size={14} color={theme.textMuted} />
+                              <Text style={s.pillText}>{isoToDisplay(String((e as any).dateISO))}</Text>
+                            </View>
+                          )}
+                        </View>
+
+                        {(String((e as any).notes ?? "").trim() !== "") && (
+                          <Text style={[s.itemNotes, { color: theme.textMuted }]} numberOfLines={2}>
+                            {String((e as any).notes)}
+                          </Text>
                         )}
                       </View>
-
-                      {(String((e as any).notes ?? "").trim() !== "") && (
-                        <Text style={[s.itemNotes, { color: theme.textMuted }]} numberOfLines={2}>
-                          {String((e as any).notes)}
-                        </Text>
-                      )}
                     </View>
-
-                    <Pressable onPress={() => confirmDelete(e)} hitSlop={10} style={s.trashBtn}>
-                      <Ionicons name="trash-outline" size={18} color="#fff" />
-                    </Pressable>
-                  </View>
-                </Pressable>
+                  </Pressable>
+                </SwipeToDeleteRow>
               );
             })
           )}
@@ -550,10 +618,8 @@ export default function PlannerScreen() {
       <Modal visible={showAdd} transparent animationType="fade" onRequestClose={() => setShowAdd(false)}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
           <View style={s.modalOverlay}>
-            {/* Backdrop: click off closes */}
             <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowAdd(false)} />
 
-            {/* Card: tap inside does nothing */}
             <View style={s.modalCard}>
               <Text style={s.sheetTitle}>Add item</Text>
 
@@ -585,7 +651,6 @@ export default function PlannerScreen() {
       <Modal visible={showEdit} transparent animationType="fade" onRequestClose={() => setShowEdit(false)}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
           <View style={s.modalOverlay}>
-            {/* Backdrop: click off closes */}
             <Pressable
               style={StyleSheet.absoluteFill}
               onPress={() => {
@@ -594,7 +659,6 @@ export default function PlannerScreen() {
               }}
             />
 
-            {/* Card: tap inside does nothing */}
             <View style={s.modalCard}>
               <Text style={s.sheetTitle}>Edit item</Text>
 
@@ -670,12 +734,12 @@ function PlannerItemForm({
   const [notes, setNotes] = useState(String((initial as any)?.notes ?? ""));
 
   const [subjectCode, setSubjectCode] = useState<string | undefined>(
-    String((initial as any)?.subjectCode ?? "").trim() ? String((initial as any)?.subjectCode).toUpperCase() : undefined
+    String((initial as any)?.subjectCode ?? "").trim()
+      ? String((initial as any)?.subjectCode).toUpperCase()
+      : undefined
   );
 
   const [customLabel, setCustomLabel] = useState<string>(String((initial as any)?.customLabel ?? ""));
-
-  // ✅ date picker open
   const [pickerOpen, setPickerOpen] = useState(false);
 
   function buildEvent(): TimelineEvent {
@@ -687,7 +751,6 @@ function PlannerItemForm({
       customLabel: kind === "custom" ? (customLabel.trim() || "Custom") : undefined,
       subjectCode: subjectCode ? subjectCode.toUpperCase() : undefined,
       notes: notes.trim() || undefined,
-      // ✅ don’t set completion here; it’s toggled on the planner page
       isComplete: (initial as any)?.isComplete ? true : false,
       createdAt: (initial as any)?.createdAt ?? now,
       updatedAt: now,
@@ -720,7 +783,6 @@ function PlannerItemForm({
       <View style={{ marginBottom: 12 }}>
         <Text style={s.label}>Type</Text>
 
-        {/* ✅ 2-column grid = neat, usually no scroll */}
         <View style={s.kindGrid}>
           {KIND_OPTIONS.map((k) => {
             const active = kind === k;
@@ -738,9 +800,7 @@ function PlannerItemForm({
                   },
                 ]}
               >
-                <Text style={[s.kindChipText, { color: active ? accent : theme.textMuted }]}>
-                  {kindLabel(k)}
-                </Text>
+                <Text style={[s.kindChipText, { color: active ? accent : theme.textMuted }]}>{kindLabel(k)}</Text>
               </Pressable>
             );
           })}
@@ -764,10 +824,7 @@ function PlannerItemForm({
         <Text style={s.label}>Due date</Text>
 
         <View style={s.inputWrap}>
-          <Pressable
-            onPress={() => setPickerOpen(true)}
-            style={[s.input, s.inputWithIcon, { justifyContent: "center" }]}
-          >
+          <Pressable onPress={() => setPickerOpen(true)} style={[s.input, s.inputWithIcon, { justifyContent: "center" }]}>
             <Text style={{ color: dateDisplay ? theme.text : theme.textMuted, fontSize: 16, fontWeight: "700" }}>
               {dateDisplay || "Select date (DD-MMM-YYYY)"}
             </Text>
@@ -851,6 +908,7 @@ const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
     },
     headerTitle: { color: t.text, fontSize: 18, fontWeight: "900" },
     headerSubtitle: { color: t.textMuted, fontSize: 12, marginTop: 4 },
+    headerHint: { fontSize: 12, marginTop: 8, fontWeight: "800" },
 
     primaryBtn: {
       flex: 1,
@@ -912,16 +970,6 @@ const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
     pillText: { color: t.textMuted, fontSize: 12, fontWeight: "800" },
 
     checkbox: { paddingTop: 2 },
-
-    trashBtn: {
-      width: 32,
-      height: 32,
-      borderRadius: 999,
-      backgroundColor: "#E25563",
-      alignItems: "center",
-      justifyContent: "center",
-      marginTop: 2,
-    },
 
     // ✅ centered modal
     modalOverlay: {
