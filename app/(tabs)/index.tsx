@@ -19,7 +19,9 @@ import {
   View,
 } from "react-native";
 import DraggableFlatList, { RenderItemParams } from "react-native-draggable-flatlist";
+import Swipeable from "react-native-gesture-handler/Swipeable";
 import { useTheme } from "../../theme/ThemeProvider";
+
 
 /** ---------- Types ---------- */
 
@@ -64,6 +66,47 @@ const FEEDBACK_SNOOZE_DELAY_MS = 28 * 24 * 60 * 60 * 1000;
 const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.l.baldacchino.GradePal";
 
 /** ---------- Helpers ---------- */
+
+function SwipeToDeleteSubjectRow({
+  children,
+  onRequestDelete,
+}: {
+  children: React.ReactNode;
+  onRequestDelete: () => void;
+}) {
+  const swipeRef = useRef<Swipeable | null>(null);
+
+  return (
+    <View style={{ borderRadius: 16, overflow: "hidden", marginBottom: 10 }}>
+      <Swipeable
+        ref={swipeRef}
+        overshootRight={false}
+        rightThreshold={60}
+        friction={2}
+        onSwipeableOpen={() => {
+          swipeRef.current?.close();
+          onRequestDelete();
+        }}
+        renderRightActions={() => (
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: "#E25563",
+              justifyContent: "center",
+              alignItems: "flex-end",
+              paddingRight: 24,
+            }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>Delete</Text>
+          </View>
+        )}
+      >
+        {children}
+      </Swipeable>
+    </View>
+  );
+}
+
 
 function clamp(n: number, lo = 0, hi = 100) {
   return Math.max(lo, Math.min(hi, n));
@@ -186,6 +229,75 @@ function getExemptVisual() {
   return { label: "Exempt", color: "#06B6D4" };
 }
 
+/** ---------- Swipe to delete (Planner-style) ---------- */
+
+function SwipeToDeleteRow({
+  children,
+  theme,
+  onDelete,
+}: {
+  children: React.ReactNode;
+  theme: any;
+  onDelete: () => Promise<void> | void;
+}) {
+  const swipeRef = useRef<Swipeable | null>(null);
+  const deletingRef = useRef(false);
+
+  const renderRightActions = () => (
+    <View style={swipeStyles.underlayFull}>
+      <Text style={swipeStyles.deleteText}>Delete</Text>
+    </View>
+  );
+
+  return (
+    <View style={[swipeStyles.swipeWrap, { borderColor: theme.border, backgroundColor: theme.card }]}>
+      <Swipeable
+        ref={swipeRef}
+        overshootRight={false}
+        renderRightActions={renderRightActions}
+        rightThreshold={56}
+        friction={2}
+        onSwipeableOpen={async (direction) => {
+          if (direction !== "right") return;
+          if (deletingRef.current) return;
+
+          deletingRef.current = true;
+          try {
+            await onDelete();
+          } finally {
+            swipeRef.current?.close();
+            deletingRef.current = false;
+          }
+        }}
+      >
+        {children}
+      </Swipeable>
+    </View>
+  );
+}
+
+const swipeStyles = StyleSheet.create({
+  swipeWrap: {
+    borderRadius: 16, // match subjectCard radius
+    overflow: "hidden",
+    borderWidth: 1,
+    marginBottom: 10, // match subjectCard marginBottom (moved here)
+  },
+  underlayFull: {
+    flex: 1,
+    backgroundColor: "#E25563",
+    justifyContent: "center",
+    alignItems: "flex-end",
+    paddingRight: 22,
+  },
+  deleteText: {
+    color: "#fff",
+    fontWeight: "900",
+    fontSize: 14,
+    letterSpacing: 0.2,
+  },
+});
+
 /** ---------- Subject row ---------- */
 
 type SubjectRowProps = {
@@ -199,16 +311,7 @@ type SubjectRowProps = {
   canDrag: boolean;
 };
 
-const SubjectRow: React.FC<SubjectRowProps> = ({
-  item,
-  drag,
-  isActive,
-  theme,
-  styles,
-  onEdit,
-  onRemove,
-  canDrag,
-}) => {
+const SubjectRow: React.FC<SubjectRowProps> = ({ item, drag, isActive, theme, styles, onEdit, onRemove, canDrag }) => {
   const router = useRouter();
   const wobbleAnim = useRef(new Animated.Value(0)).current;
 
@@ -251,76 +354,65 @@ const SubjectRow: React.FC<SubjectRowProps> = ({
   const periodLabel = formatCommencement(item.commencement);
 
   return (
-    <Animated.View
-      style={[
-        styles.subjectCard,
-        animatedStyle,
-        {
-          borderColor: theme.border,
-          backgroundColor: theme.card,
-          borderLeftColor: accent,
-          zIndex: isActive ? 50 : 0,
-          elevation: isActive ? 12 : 0,
-        },
-        completed && styles.completedCard,
-      ]}
-    >
-      <Pressable
-        style={{ flex: 1, paddingRight: 10 }}
-        onPress={() => router.push(`/grade-planner/${encodeURIComponent(item.code)}`)}
+    <SwipeToDeleteRow theme={theme} onDelete={() => onRemove(item)}>
+      <Animated.View
+        style={[
+          styles.subjectCard,
+          animatedStyle,
+          {
+            borderColor: theme.border,
+            backgroundColor: theme.card,
+            borderLeftColor: accent,
+            zIndex: isActive ? 50 : 0,
+            elevation: isActive ? 12 : 0,
+          },
+          completed && styles.completedCard,
+        ]}
       >
-        <View style={styles.subjectTopRow}>
-          <Text style={{ flex: 1 }}>
-            <Text style={styles.subjectCode}>{item.code}</Text>
-            <Text style={styles.subjectName}> – {item.name}</Text>
-          </Text>
-
-          <View style={[styles.tagPill, { borderColor: accent }]}>
-            <Text style={[styles.tagText, { color: accent }]} numberOfLines={1}>
-              {tagText}
+        <Pressable style={{ flex: 1, paddingRight: 10 }} onPress={() => router.push(`/grade-planner/${encodeURIComponent(item.code)}`)}>
+          <View style={styles.subjectTopRow}>
+            <Text style={{ flex: 1 }}>
+              <Text style={styles.subjectCode}>{item.code}</Text>
+              <Text style={styles.subjectName}> – {item.name}</Text>
             </Text>
+
+            <View style={[styles.tagPill, { borderColor: accent }]}>
+              <Text style={[styles.tagText, { color: accent }]} numberOfLines={1}>
+                {tagText}
+              </Text>
+            </View>
           </View>
-        </View>
 
-        <View style={{ marginTop: 8 }}>
-          {item.isExempt ? (
-            <Text style={[styles.metaText, { color: theme.textMuted }]}>
-              Exempt
-              {typeof item.exemptFinalMark === "number" ? ` • Grade: ${item.exemptFinalMark.toFixed(1)}%` : ""}
-            </Text>
-          ) : typeof item.finalMark === "number" ? (
-            <Text style={[styles.metaText, { color: theme.textMuted }]}>Final: {item.finalMark.toFixed(1)}%</Text>
-          ) : null}
-
-          {typeof mark === "number" ? (
-            <Text style={[styles.metaTiny, { color: theme.textMuted }]}>Counts toward WAM</Text>
-          ) : null}
-        </View>
-
-        <View style={styles.subjectBottomRow}>
-          <Text style={[styles.periodText, { color: theme.textMuted }]} numberOfLines={1}>
-            {periodLabel}
-            {completed ? "  •  Completed" : ""}
-          </Text>
-
-          <View style={styles.actionsRow}>
-            <Pressable onPress={() => onEdit(item)} style={styles.actionIconBtn} hitSlop={10}>
-              <Ionicons name="create-outline" size={18} color={theme.textMuted} />
-            </Pressable>
-
-            <Pressable onPress={() => onRemove(item)} style={styles.actionIconBtn} hitSlop={10}>
-              <Ionicons name="trash-outline" size={18} color={theme.textMuted} />
-            </Pressable>
-
-            {canDrag ? (
-              <Pressable onLongPress={drag} delayLongPress={140} style={styles.actionIconBtn} hitSlop={10}>
-                <Ionicons name="reorder-three-outline" size={22} color={theme.textMuted} />
-              </Pressable>
+          <View style={{ marginTop: 8 }}>
+            {item.isExempt ? (
+              <Text style={[styles.metaText, { color: theme.textMuted }]}>
+                Exempt{typeof item.exemptFinalMark === "number" ? ` • Grade: ${item.exemptFinalMark.toFixed(1)}%` : ""}
+              </Text>
+            ) : typeof item.finalMark === "number" ? (
+              <Text style={[styles.metaText, { color: theme.textMuted }]}>Final: {item.finalMark.toFixed(1)}%</Text>
             ) : null}
+
+            {typeof mark === "number" ? <Text style={[styles.metaTiny, { color: theme.textMuted }]}>Counts toward WAM</Text> : null}
           </View>
-        </View>
-      </Pressable>
-    </Animated.View>
+
+          <View style={styles.subjectBottomRow}>
+            <Text style={[styles.periodText, { color: theme.textMuted }]} numberOfLines={1}>
+              {periodLabel}
+              {completed ? "  •  Completed" : ""}
+            </Text>
+
+            <View style={styles.actionsRow}>
+
+              {canDrag ? (
+                <Pressable onLongPress={drag} delayLongPress={140} style={styles.actionIconBtn} hitSlop={10}>
+                  <Ionicons name="reorder-three-outline" size={22} color={theme.textMuted} />
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+        </Pressable>
+      </Animated.View>
+    </SwipeToDeleteRow>
   );
 };
 
@@ -495,7 +587,7 @@ export default function SubjectsScreen() {
     return 4;
   }
 
-  // ✅ NEW: unified modal closers (tap outside or Android back)
+  // ✅ unified modal closers
   const closeAddModal = useCallback(() => {
     Keyboard.dismiss();
     setAddOpen(false);
@@ -542,7 +634,7 @@ export default function SubjectsScreen() {
 
     const next = [newSub, ...subjects];
     await persist(next).catch(() => {});
-    closeAddModal(); // ✅ consistent close + reset
+    closeAddModal();
   };
 
   const handleReorderActive = async (activeOrdered: Subject[]) => {
@@ -601,13 +693,12 @@ export default function SubjectsScreen() {
         tagKey: editTagKey,
         tagLabel: updatedTagLabel,
         isExempt: editIsExempt ? true : false,
-        exemptFinalMark:
-          editIsExempt && editExemptGrade.trim() !== "" ? clamp(toNum(editExemptGrade.trim()), 0, 100) : undefined,
+        exemptFinalMark: editIsExempt && editExemptGrade.trim() !== "" ? clamp(toNum(editExemptGrade.trim()), 0, 100) : undefined,
       };
     });
 
     await persist(next).catch(() => {});
-    closeEditModal(); // ✅ consistent close
+    closeEditModal();
   }
 
   function openRemoveModal(sub: Subject) {
@@ -631,20 +722,38 @@ export default function SubjectsScreen() {
     }
   }
 
+  // ✅ swipe delete should remove immediately (no confirm modal)
+  async function removeSubjectImmediate(sub: Subject) {
+    try {
+      const next = subjects.filter((s) => s.code !== sub.code);
+      await persist(next);
+
+      const plannerKey = `grade-planner:${sub.code.toUpperCase()}`;
+      await AsyncStorage.removeItem(plannerKey);
+    } catch {
+      Alert.alert("Error", "Something went wrong while removing the subject.");
+    }
+  }
+
   const renderActiveItem = ({ item, drag, isActive }: RenderItemParams<Subject>) => {
-    return (
-      <SubjectRow
-        item={item}
-        drag={drag}
-        isActive={isActive}
-        theme={theme}
-        styles={s}
-        onEdit={openEditModal}
-        onRemove={openRemoveModal}
-        canDrag={true}
-      />
-    );
-  };
+      return (
+        <SwipeToDeleteSubjectRow
+          onRequestDelete={() => openRemoveModal(item)}
+        >
+          <SubjectRow
+            item={item}
+            drag={drag}
+            isActive={isActive}
+            theme={theme}
+            styles={s}
+            onEdit={openEditModal}
+            onRemove={openRemoveModal}
+            canDrag={true}
+          />
+        </SwipeToDeleteSubjectRow>
+      );
+    };
+
 
   const CompletedSection = useMemo(() => {
     if (completedList.length === 0) return null;
@@ -657,27 +766,33 @@ export default function SubjectsScreen() {
         </View>
 
         {completedList.map((sub) => (
-          <SubjectRow
-            key={`completed:${sub.code}`}
-            item={sub}
-            isActive={false}
-            theme={theme}
-            styles={s}
-            onEdit={openEditModal}
-            onRemove={openRemoveModal}
-            canDrag={false}
-          />
-        ))}
+            <SwipeToDeleteSubjectRow
+              key={`completed:${sub.code}`}
+              onRequestDelete={() => openRemoveModal(sub)}
+            >
+              <SubjectRow
+                item={sub}
+                isActive={false}
+                theme={theme}
+                styles={s}
+                onEdit={openEditModal}
+                onRemove={openRemoveModal}
+                canDrag={false}
+              />
+            </SwipeToDeleteSubjectRow>
+          ))}
       </View>
     );
-  }, [completedList, theme, s]);
+  }, [completedList, theme, s, subjects]);
 
   return (
-    // ✅ tapping anywhere outside inputs dismisses keyboard
     <Pressable style={{ flex: 1 }} onPress={() => Keyboard.dismiss()}>
       <View style={[s.screen]}>
         <Text style={s.title}>Subjects</Text>
-        <Text style={s.subtitle}>Tap a subject to open its grade planner. Long-press ≡ to reorder active subjects.</Text>
+        <Text style={s.subtitle}>
+          Tap a subject to open its grade planner. Long-press ≡ to reorder active subjects.
+          {"\n"}Swipe left on a subject to delete it.
+        </Text>
 
         <View style={s.divider} />
 
@@ -717,19 +832,9 @@ export default function SubjectsScreen() {
         />
 
         {/* ADD MODAL */}
-        <Modal
-          visible={addOpen}
-          transparent
-          animationType="fade"
-          onRequestClose={closeAddModal} // ✅ Android back
-        >
-          {/* ✅ overlay click closes modal (like planner.tsx behavior) */}
+        <Modal visible={addOpen} transparent animationType="fade" onRequestClose={closeAddModal}>
           <Pressable style={s.modalOverlay} onPress={closeAddModal}>
-            {/* ✅ inner card prevents close when tapping inside */}
-            <Pressable
-              style={[s.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}
-              onPress={() => {}}
-            >
+            <Pressable style={[s.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={() => {}}>
               <Text style={[s.modalTitle, { color: theme.text }]}>Add subject</Text>
 
               <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 10 }]}>Subject code</Text>
@@ -781,10 +886,7 @@ export default function SubjectsScreen() {
                         <Pressable
                           key={n}
                           onPress={() => setPeriodNum(n)}
-                          style={[
-                            s.numChip,
-                            { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card },
-                          ]}
+                          style={[s.numChip, { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card }]}
                         >
                           <Text style={[s.numChipText, { color: active ? theme.primary : theme.textMuted }]}>{n}</Text>
                         </Pressable>
@@ -807,10 +909,7 @@ export default function SubjectsScreen() {
                           const mx = maxNumForType(pt);
                           setPeriodNum((prev) => Math.min(prev, mx));
                         }}
-                        style={[
-                          s.chip,
-                          { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card },
-                        ]}
+                        style={[s.chip, { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card }]}
                       >
                         <Text style={[s.chipText, { color: active ? theme.primary : theme.textMuted }]}>{pt}</Text>
                       </Pressable>
@@ -836,10 +935,7 @@ export default function SubjectsScreen() {
                     <Pressable
                       key={x.key}
                       onPress={() => setTagKey(x.key)}
-                      style={[
-                        s.chip,
-                        { borderColor: active ? tv.color : theme.border, backgroundColor: theme.card },
-                      ]}
+                      style={[s.chip, { borderColor: active ? tv.color : theme.border, backgroundColor: theme.card }]}
                     >
                       <Text style={[s.chipText, { color: active ? tv.color : theme.textMuted }]}>{x.label}</Text>
                     </Pressable>
@@ -865,10 +961,7 @@ export default function SubjectsScreen() {
                     setIsExempt((p) => !p);
                     if (isExempt) setExemptGrade("");
                   }}
-                  style={[
-                    s.togglePill,
-                    { borderColor: isExempt ? theme.primary : theme.border, backgroundColor: theme.card },
-                  ]}
+                  style={[s.togglePill, { borderColor: isExempt ? theme.primary : theme.border, backgroundColor: theme.card }]}
                 >
                   <Text style={[s.toggleText, { color: isExempt ? theme.primary : theme.textMuted }]}>
                     {isExempt ? "Exempt subject ✓" : "Exempt subject"}
@@ -908,18 +1001,9 @@ export default function SubjectsScreen() {
         </Modal>
 
         {/* EDIT MODAL */}
-        <Modal
-          visible={editOpen}
-          transparent
-          animationType="fade"
-          onRequestClose={closeEditModal} // ✅ Android back
-        >
-          {/* ✅ overlay click closes modal */}
+        <Modal visible={editOpen} transparent animationType="fade" onRequestClose={closeEditModal}>
           <Pressable style={s.modalOverlay} onPress={closeEditModal}>
-            <Pressable
-              style={[s.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}
-              onPress={() => {}}
-            >
+            <Pressable style={[s.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={() => {}}>
               <Text style={[s.modalTitle, { color: theme.text }]}>Edit subject</Text>
               <Text style={[s.modalSub, { color: theme.textMuted }]}>{editing?.code}</Text>
 
@@ -959,10 +1043,7 @@ export default function SubjectsScreen() {
                         <Pressable
                           key={n}
                           onPress={() => setEditPeriodNum(n)}
-                          style={[
-                            s.numChip,
-                            { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card },
-                          ]}
+                          style={[s.numChip, { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card }]}
                         >
                           <Text style={[s.numChipText, { color: active ? theme.primary : theme.textMuted }]}>{n}</Text>
                         </Pressable>
@@ -985,10 +1066,7 @@ export default function SubjectsScreen() {
                           const mx = maxNumForType(pt);
                           setEditPeriodNum((prev) => Math.min(prev, mx));
                         }}
-                        style={[
-                          s.chip,
-                          { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card },
-                        ]}
+                        style={[s.chip, { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card }]}
                       >
                         <Text style={[s.chipText, { color: active ? theme.primary : theme.textMuted }]}>{pt}</Text>
                       </Pressable>
@@ -1012,10 +1090,7 @@ export default function SubjectsScreen() {
                     <Pressable
                       key={x.key}
                       onPress={() => setEditTagKey(x.key)}
-                      style={[
-                        s.chip,
-                        { borderColor: active ? tv.color : theme.border, backgroundColor: theme.card },
-                      ]}
+                      style={[s.chip, { borderColor: active ? tv.color : theme.border, backgroundColor: theme.card }]}
                     >
                       <Text style={[s.chipText, { color: active ? tv.color : theme.textMuted }]}>{x.label}</Text>
                     </Pressable>
@@ -1041,10 +1116,7 @@ export default function SubjectsScreen() {
                     setEditIsExempt((p) => !p);
                     if (editIsExempt) setEditExemptGrade("");
                   }}
-                  style={[
-                    s.togglePill,
-                    { borderColor: editIsExempt ? theme.primary : theme.border, backgroundColor: theme.card },
-                  ]}
+                  style={[s.togglePill, { borderColor: editIsExempt ? theme.primary : theme.border, backgroundColor: theme.card }]}
                 >
                   <Text style={[s.toggleText, { color: editIsExempt ? theme.primary : theme.textMuted }]}>
                     {editIsExempt ? "Exempt subject ✓" : "Exempt subject"}
@@ -1080,7 +1152,7 @@ export default function SubjectsScreen() {
           </Pressable>
         </Modal>
 
-        {/* REMOVE MODAL */}
+        {/* REMOVE MODAL (kept for safety, but no longer used by swipe) */}
         <Modal
           visible={removeOpen}
           transparent
@@ -1092,11 +1164,24 @@ export default function SubjectsScreen() {
         >
           <Pressable style={s.modalOverlay} onPress={() => {}}>
             <View style={[s.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Text style={[s.modalTitle, { color: theme.text }]}>Remove subject</Text>
-              <Text style={[s.modalSub, { color: theme.textMuted }]}>{removing ? `${removing.code} — ${removing.name}` : ""}</Text>
+              <Text style={[s.modalTitle, { color: theme.text }]}>Delete subject</Text>
+
+              <Text
+                style={[
+                  s.modalSub,
+                  { color: theme.textMuted, marginTop: 8, textAlign: "center" },
+                ]}
+              >
+                {removing
+                  ? `Are you sure you want to delete the ${removing.code} subject?\n\nThis will remove all saved grades and planner data for this subject.`
+                  : ""}
+              </Text>
+
 
               <View style={{ marginTop: 12 }}>
-                <Text style={[s.helperText, { color: theme.textMuted }]}>This will also delete its saved grade planner data.</Text>
+                <Text style={[s.helperText, { color: theme.textMuted }]}>
+                  This will also delete its saved grade planner data.
+                </Text>
               </View>
 
               <View style={s.modalButtonsRow}>
@@ -1163,10 +1248,7 @@ export default function SubjectsScreen() {
                   AsyncStorage.setItem(FEEDBACK_PROMPTED_KEY, "true").catch(() => {});
                   setShowFeedback(false);
                   Linking.openURL(PLAY_STORE_URL).catch(() => {
-                    Alert.alert(
-                      "Unable to open Play Store",
-                      "Please search for 'Grade Pal' on the Play Store to leave a review."
-                    );
+                    Alert.alert("Unable to open Play Store", "Please search for 'Grade Pal' on the Play Store to leave a review.");
                   });
                 }}
               >
@@ -1254,10 +1336,8 @@ const makeStyles = (t: any) =>
     },
 
     subjectCard: {
-      borderWidth: 1,
-      borderRadius: 16,
+      // ✅ removed border/margin/radius: Swipe wrapper owns those now
       padding: 14,
-      marginBottom: 10,
       flexDirection: "row",
       alignItems: "flex-start",
       borderLeftWidth: 6,

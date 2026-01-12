@@ -6,10 +6,13 @@ ____________________________________________________________
 
 V 1.1.0 – Minor updates
 
-This is an excited update as we are finally approved to publish the application onto the Play Store. Due to this, this release will come with additional features, and UI/UX improvements.
+This is an exciting update as we are finally approved to publish the application onto the Play Store. Due to this, this release will come with additional features, and UI/UX improvements.
 
 - Planner added
   - Added a new Planner tab for tracking upcoming study items and key dates.
+  - Upcoming assessments and exams are auto-added to the Planner
+  - Ability to manually add to-do tasks or events
+  - Swipe left to delete planner items
 
 - Home page
   - UI improved:
@@ -17,14 +20,16 @@ This is an excited update as we are finally approved to publish the application 
     - Can tag subjects with subject Type
     - Can associate a study type (semester, trimester, term)
     - General UI/UX improvements
-  - Can add exempt subject (With or without grade)
+  - Can add exempt subject (With or without grades)
   - WAM is now calculated
   - Can only re-order non-completed subjects
     - Completed subjects are fixed in position
+  - Swipe left to delete subjects
 
 - Subject page
   - Auto calculate final exam mark based on final grade
   - Overal UI/UX improvements
+  - Swipe left to delete assignments/exams
 
 
 ____________________________________________________________
