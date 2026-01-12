@@ -19,13 +19,8 @@ import {
   View,
 } from "react-native";
 
-import {
-  getTimeline,
-  removeTimelineEvent,
-  sortTimeline,
-  upsertTimelineEvent
-} from "../../_lib/timelineStorage";
-import { TimelineEvent, TimelineKind } from "../../_lib/timelineTypes";
+import { getTimeline, removeTimelineEvent, sortTimeline, upsertTimelineEvent } from "../../_lib/timelineStorage";
+import { TimelineEvent } from "../../_lib/timelineTypes";
 import { useTheme } from "../../theme/ThemeProvider";
 
 // -------------------------------
@@ -90,17 +85,58 @@ function isCompletedSubjectLike(sub: Subject) {
 }
 
 // -------------------------------
-// Timeline completed logic
+// Planner kinds (6 tags)
 // -------------------------------
-// Completion rules:
-// - If event.isComplete === true -> completed
-// - Else if assessment/exam and grade exists -> completed
+const KIND_OPTIONS = ["lecture", "tute", "study", "todo", "admin", "custom"] as const;
+type PlannerKind = (typeof KIND_OPTIONS)[number];
+
+// -------------------------------
+// Timeline completed logic (simple)
+// - completed if isComplete true OR grade exists
+// -------------------------------
 function isEventCompleted(e: TimelineEvent) {
-  if (e?.isComplete) return true;
-  const kind = e?.kind as TimelineKind;
-  const isAssy = kind === "assessment" || kind === "exam";
-  if (!isAssy) return false;
-  return typeof e.grade === "number" && Number.isFinite(e.grade);
+  if ((e as any)?.isComplete) return true;
+  return typeof (e as any)?.grade === "number" && Number.isFinite((e as any).grade);
+}
+
+// -------------------------------
+// Kind accent + label (6 tags)
+// - todo is ORANGE
+// -------------------------------
+function kindAccent(kind: PlannerKind, theme: any) {
+  switch (kind) {
+    case "lecture":
+      return "#16A34A"; // green
+    case "tute":
+      return "#2563EB"; // blue
+    case "study":
+      return "#9333EA"; // purple
+    case "todo":
+      return "#F97316"; // orange
+    case "admin":
+      return "#64748B"; // slate/grey
+    case "custom":
+    default:
+      return theme.primary ?? "#E11D48"; // fallback
+  }
+}
+
+function kindLabel(kind: PlannerKind) {
+  switch (kind) {
+    case "lecture":
+      return "Lecture";
+    case "tute":
+      return "Tutorial/Lab";
+    case "study":
+      return "Study";
+    case "todo":
+      return "Todo";
+    case "admin":
+      return "Admin";
+    case "custom":
+    default:
+      return "Custom";
+  }
 }
 
 // -------------------------------
@@ -149,20 +185,7 @@ function DatePickerModal({
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onCancel}>
-      <Pressable
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: "rgba(0,0,0,0.55)",
-          justifyContent: "center",
-          alignItems: "center",
-          padding: 22,
-        }}
-        onPress={() => {}}
-      >
+      <Pressable style={stylesBase.centerOverlay} onPress={() => {}}>
         <View
           style={{
             width: "100%",
@@ -173,9 +196,7 @@ function DatePickerModal({
             backgroundColor: theme.card,
           }}
         >
-          <Text style={{ color: theme.text, fontWeight: "900", fontSize: 16, marginBottom: 10 }}>
-            Select date
-          </Text>
+          <Text style={{ color: theme.text, fontWeight: "900", fontSize: 16, marginBottom: 10 }}>Select date</Text>
 
           <DateTimePicker
             value={temp}
@@ -220,9 +241,22 @@ function DatePickerModal({
   );
 }
 
+const stylesBase = StyleSheet.create({
+  centerOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 22,
+  },
+});
+
 // -------------------------------
-// Subjects list loader (MATCH Pomodoro)
-// ✅ Only return ACTIVE subjects for chips (not completed)
+// Subjects list loader (ACTIVE only)
 // -------------------------------
 async function loadSubjectsList(): Promise<Subject[]> {
   try {
@@ -239,7 +273,6 @@ async function loadSubjectsList(): Promise<Subject[]> {
       }))
       .filter((s) => s.code.length > 0);
 
-    // ✅ match Pomodoro: selector excludes completed subjects
     return cleaned.filter((s) => !isCompletedSubjectLike(s));
   } catch {
     return [];
@@ -306,7 +339,6 @@ export default function PlannerScreen() {
 
   const [timeline, setTimelineState] = useState<TimelineEvent[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-
   const [hideCompleted, setHideCompleted] = useState<boolean>(false);
 
   const [showAdd, setShowAdd] = useState(false);
@@ -368,24 +400,24 @@ export default function PlannerScreen() {
     const completedNow = isEventCompleted(e);
 
     const next: TimelineEvent = {
-      ...e,
+      ...(e as any),
       isComplete: completedNow ? false : true,
       updatedAt: Date.now(),
-      createdAt: e.createdAt ?? Date.now(),
+      createdAt: (e as any).createdAt ?? Date.now(),
     };
 
-    await upsertTimelineEvent(next);
+    await upsertTimelineEvent(next as any);
     await refreshTimeline();
   }
 
   async function confirmDelete(e: TimelineEvent) {
-    Alert.alert("Delete item", `Delete "${e.title}"?`, [
+    Alert.alert("Delete item", `Delete "${(e as any).title ?? "item"}"?`, [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
         style: "destructive",
         onPress: async () => {
-          await removeTimelineEvent(e.id);
+          await removeTimelineEvent((e as any).id);
           await refreshTimeline();
         },
       },
@@ -423,9 +455,7 @@ export default function PlannerScreen() {
               size={18}
               color={hideCompleted ? theme.primary : theme.textMuted}
             />
-            <Text style={[s.toggleBtnText, { color: hideCompleted ? theme.primary : theme.textMuted }]}>
-              Hide completed
-            </Text>
+            <Text style={[s.toggleBtnText, { color: hideCompleted ? theme.primary : theme.textMuted }]}>Hide completed</Text>
           </Pressable>
         </View>
       </View>
@@ -442,80 +472,96 @@ export default function PlannerScreen() {
             <View style={s.emptyCard}>
               <Text style={s.emptyTitle}>Nothing here yet</Text>
               <Text style={s.emptyText}>
-                Add an item (assessment, exam, lecture, todo, custom). Link it to an active subject if you want.
+                Add an item (Lecture, Tutorial/Lab, Study, Todo, Admin, Custom). Link it to an active subject if you want.
               </Text>
             </View>
           ) : (
-            visibleTimeline.map((e) => (
-              <Pressable key={e.id} onPress={() => openEdit(e)} style={s.itemCard}>
-                <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
-                  <Pressable onPress={() => toggleComplete(e)} hitSlop={10} style={s.checkbox}>
-                    <Ionicons
-                      name={isEventCompleted(e) ? "checkbox-outline" : "square-outline"}
-                      size={22}
-                      color={isEventCompleted(e) ? theme.success : theme.textMuted}
-                    />
-                  </Pressable>
+            visibleTimeline.map((e) => {
+              const kind = (((e as any).kind ?? "custom") as PlannerKind) || "custom";
+              const accent = kindAccent(kind, theme);
 
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={[
-                        s.itemTitle,
-                        isEventCompleted(e) && { opacity: 0.55, textDecorationLine: "line-through" },
-                      ]}
-                    >
-                      {e.title}
-                    </Text>
+              return (
+                <Pressable
+                  key={(e as any).id}
+                  onPress={() => openEdit(e)}
+                  style={[s.itemCard, { borderLeftColor: accent }]}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+                    <Pressable onPress={() => toggleComplete(e)} hitSlop={10} style={s.checkbox}>
+                      <Ionicons
+                        name={isEventCompleted(e) ? "checkbox-outline" : "square-outline"}
+                        size={22}
+                        color={isEventCompleted(e) ? theme.success : theme.textMuted}
+                      />
+                    </Pressable>
 
-                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
-                      <View style={s.pill}>
-                        <Text style={s.pillText}>{String(e.kind ?? "custom")}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[
+                          s.itemTitle,
+                          isEventCompleted(e) && { opacity: 0.55, textDecorationLine: "line-through" },
+                        ]}
+                      >
+                        {String((e as any).title ?? "")}
+                      </Text>
+
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+                        <View style={[s.pill, { borderColor: accent }]}>
+                          <Text style={[s.pillText, { color: accent }]}>
+                            {kind === "custom" ? String((e as any).customLabel?.trim() || "Custom") : kindLabel(kind)}
+                          </Text>
+                        </View>
+
+                        {(String((e as any).subjectCode ?? "").trim() !== "") && (
+                          <View style={[s.pill, { borderColor: theme.primary }]}>
+                            <Text style={[s.pillText, { color: theme.primary }]}>
+                              {String((e as any).subjectCode).toUpperCase()}
+                            </Text>
+                          </View>
+                        )}
+
+                        {(String((e as any).dateISO ?? "").trim() !== "") && (
+                          <View style={s.pill}>
+                            <Ionicons name="calendar-outline" size={14} color={theme.textMuted} />
+                            <Text style={s.pillText}>{isoToDisplay(String((e as any).dateISO))}</Text>
+                          </View>
+                        )}
                       </View>
 
-                      {(e.subjectCode ?? "").trim() !== "" && (
-                        <View style={[s.pill, { borderColor: theme.primary }]}>
-                          <Text style={[s.pillText, { color: theme.primary }]}>{String(e.subjectCode).toUpperCase()}</Text>
-                        </View>
-                      )}
-
-                      {(e.dateISO ?? "").trim() !== "" && (
-                        <View style={s.pill}>
-                          <Ionicons name="calendar-outline" size={14} color={theme.textMuted} />
-                          <Text style={s.pillText}>{isoToDisplay(e.dateISO)}</Text>
-                        </View>
-                      )}
-
-                      {(e.kind === "assessment" || e.kind === "exam") && typeof e.weight === "number" && (
-                        <View style={s.pill}>
-                          <Text style={s.pillText}>{clamp(e.weight, 0, 100).toFixed(0)}%</Text>
-                        </View>
+                      {(String((e as any).notes ?? "").trim() !== "") && (
+                        <Text style={[s.itemNotes, { color: theme.textMuted }]} numberOfLines={2}>
+                          {String((e as any).notes)}
+                        </Text>
                       )}
                     </View>
 
-                    {(e.notes ?? "").trim() !== "" && (
-                      <Text style={[s.itemNotes, { color: theme.textMuted }]} numberOfLines={2}>
-                        {e.notes}
-                      </Text>
-                    )}
+                    <Pressable onPress={() => confirmDelete(e)} hitSlop={10} style={s.trashBtn}>
+                      <Ionicons name="trash-outline" size={18} color="#fff" />
+                    </Pressable>
                   </View>
-
-                  <Pressable onPress={() => confirmDelete(e)} hitSlop={10} style={s.trashBtn}>
-                    <Ionicons name="trash-outline" size={18} color="#fff" />
-                  </Pressable>
-                </View>
-              </Pressable>
-            ))
+                </Pressable>
+              );
+            })
           )}
         </View>
       </ScrollView>
 
-      {/* -------------------- Add modal -------------------- */}
-      <Modal visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
+      {/* -------------------- Add modal (CENTERED) -------------------- */}
+      <Modal visible={showAdd} transparent animationType="fade" onRequestClose={() => setShowAdd(false)}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}>
-            <View style={s.sheet}>
+          <View style={s.modalOverlay}>
+            {/* Backdrop: click off closes */}
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowAdd(false)} />
+
+            {/* Card: tap inside does nothing */}
+            <View style={s.modalCard}>
               <Text style={s.sheetTitle}>Add item</Text>
-              <ScrollView keyboardShouldPersistTaps="handled">
+
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                style={{ width: "100%" }}
+                contentContainerStyle={{ flexGrow: 1, paddingBottom: 16 }}
+              >
                 <PlannerItemForm
                   mode="add"
                   theme={theme}
@@ -523,24 +569,40 @@ export default function PlannerScreen() {
                   subjects={subjects}
                   onCancel={() => setShowAdd(false)}
                   onSave={async (payload) => {
-                    await upsertTimelineEvent(payload);
+                    await upsertTimelineEvent(payload as any);
                     await refreshTimeline();
                     setShowAdd(false);
                   }}
                 />
+                <View style={{ height: 18 }} />
               </ScrollView>
             </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* -------------------- Edit modal -------------------- */}
-      <Modal visible={showEdit} transparent animationType="slide" onRequestClose={() => setShowEdit(false)}>
+      {/* -------------------- Edit modal (CENTERED) -------------------- */}
+      <Modal visible={showEdit} transparent animationType="fade" onRequestClose={() => setShowEdit(false)}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" }}>
-            <View style={s.sheet}>
+          <View style={s.modalOverlay}>
+            {/* Backdrop: click off closes */}
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPress={() => {
+                setShowEdit(false);
+                setEditing(null);
+              }}
+            />
+
+            {/* Card: tap inside does nothing */}
+            <View style={s.modalCard}>
               <Text style={s.sheetTitle}>Edit item</Text>
-              <ScrollView keyboardShouldPersistTaps="handled">
+
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                style={{ width: "100%" }}
+                contentContainerStyle={{ flexGrow: 1, paddingBottom: 16 }}
+              >
                 <PlannerItemForm
                   mode="edit"
                   theme={theme}
@@ -552,7 +614,7 @@ export default function PlannerScreen() {
                     setEditing(null);
                   }}
                   onSave={async (payload) => {
-                    await upsertTimelineEvent(payload);
+                    await upsertTimelineEvent(payload as any);
                     await refreshTimeline();
                     setShowEdit(false);
                     setEditing(null);
@@ -560,7 +622,7 @@ export default function PlannerScreen() {
                   onDelete={
                     editing
                       ? async () => {
-                          await removeTimelineEvent(editing.id);
+                          await removeTimelineEvent((editing as any).id);
                           await refreshTimeline();
                           setShowEdit(false);
                           setEditing(null);
@@ -568,6 +630,7 @@ export default function PlannerScreen() {
                       : undefined
                   }
                 />
+                <View style={{ height: 18 }} />
               </ScrollView>
             </View>
           </View>
@@ -601,40 +664,34 @@ function PlannerItemForm({
 }) {
   const now = Date.now();
 
-  const [title, setTitle] = useState(initial?.title ?? "");
-  const [kind, setKind] = useState<TimelineKind>((initial?.kind as TimelineKind) ?? "todo");
-  const [dateISO, setDateISO] = useState<string>(initial?.dateISO ?? isoToday());
-  const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [title, setTitle] = useState(String((initial as any)?.title ?? ""));
+  const [kind, setKind] = useState<PlannerKind>((((initial as any)?.kind as PlannerKind) ?? "todo"));
+  const [dateISO, setDateISO] = useState<string>(String((initial as any)?.dateISO ?? isoToday()));
+  const [notes, setNotes] = useState(String((initial as any)?.notes ?? ""));
 
   const [subjectCode, setSubjectCode] = useState<string | undefined>(
-    (initial?.subjectCode ?? "").trim() ? String(initial?.subjectCode).toUpperCase() : undefined
+    String((initial as any)?.subjectCode ?? "").trim() ? String((initial as any)?.subjectCode).toUpperCase() : undefined
   );
 
-  const [weightStr, setWeightStr] = useState<string>(
-    typeof initial?.weight === "number" && Number.isFinite(initial.weight) ? String(initial.weight) : ""
-  );
+  const [customLabel, setCustomLabel] = useState<string>(String((initial as any)?.customLabel ?? ""));
 
-  const [isComplete, setIsComplete] = useState<boolean>(!!initial?.isComplete);
+  // ✅ date picker open
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  const kindOptions: TimelineKind[] = ["assessment", "exam", "lecture", "holiday", "todo", "custom"];
-  const showWeight = kind === "assessment" || kind === "exam";
-
   function buildEvent(): TimelineEvent {
-    const weightNum = showWeight && weightStr.trim() !== "" ? clamp(toNum(weightStr.trim()), 0, 100) : undefined;
-
     return {
-      id: initial?.id ?? `t:${Date.now()}`,
+      id: (initial as any)?.id ?? `t:${Date.now()}`,
       title: title.trim() || (kind === "todo" ? "Todo" : "Untitled"),
       dateISO: dateISO.trim() || isoToday(),
-      kind,
+      kind: kind as any,
+      customLabel: kind === "custom" ? (customLabel.trim() || "Custom") : undefined,
       subjectCode: subjectCode ? subjectCode.toUpperCase() : undefined,
-      weight: typeof weightNum === "number" && Number.isFinite(weightNum) ? weightNum : undefined,
-      isComplete: isComplete ? true : false,
       notes: notes.trim() || undefined,
-      createdAt: initial?.createdAt ?? now,
+      // ✅ don’t set completion here; it’s toggled on the planner page
+      isComplete: (initial as any)?.isComplete ? true : false,
+      createdAt: (initial as any)?.createdAt ?? now,
       updatedAt: now,
-    };
+    } as any;
   }
 
   function submit() {
@@ -654,7 +711,7 @@ function PlannerItemForm({
         <TextInput
           value={title}
           onChangeText={setTitle}
-          placeholder={kind === "todo" ? "e.g. Do practice quiz" : "e.g. Assignment 1"}
+          placeholder={kind === "todo" ? "e.g. Do practice quiz" : "e.g. Study session"}
           placeholderTextColor={theme.textMuted}
           style={s.input}
         />
@@ -662,27 +719,55 @@ function PlannerItemForm({
 
       <View style={{ marginBottom: 12 }}>
         <Text style={s.label}>Type</Text>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-          {kindOptions.map((k) => {
+
+        {/* ✅ 2-column grid = neat, usually no scroll */}
+        <View style={s.kindGrid}>
+          {KIND_OPTIONS.map((k) => {
             const active = kind === k;
+            const accent = kindAccent(k, theme);
+
             return (
               <Pressable
                 key={k}
                 onPress={() => setKind(k)}
-                style={[s.chip, active && [s.chipActive, { borderColor: theme.primary }]]}
+                style={[
+                  s.kindChip,
+                  {
+                    borderColor: active ? accent : theme.border,
+                    backgroundColor: active ? theme.bg : theme.card,
+                  },
+                ]}
               >
-                <Text style={[s.chipText, active && { color: theme.primary }]}>{k}</Text>
+                <Text style={[s.kindChipText, { color: active ? accent : theme.textMuted }]}>
+                  {kindLabel(k)}
+                </Text>
               </Pressable>
             );
           })}
         </View>
+
+        {kind === "custom" && (
+          <View style={{ marginTop: 10 }}>
+            <Text style={s.label}>Custom tag name</Text>
+            <TextInput
+              value={customLabel}
+              onChangeText={setCustomLabel}
+              placeholder="e.g. Prac / Catch-up / Admin"
+              placeholderTextColor={theme.textMuted}
+              style={s.input}
+            />
+          </View>
+        )}
       </View>
 
       <View style={{ marginBottom: 12 }}>
         <Text style={s.label}>Due date</Text>
 
         <View style={s.inputWrap}>
-          <Pressable onPress={() => setPickerOpen(true)} style={[s.input, s.inputWithIcon, { justifyContent: "center" }]}>
+          <Pressable
+            onPress={() => setPickerOpen(true)}
+            style={[s.input, s.inputWithIcon, { justifyContent: "center" }]}
+          >
             <Text style={{ color: dateDisplay ? theme.text : theme.textMuted, fontSize: 16, fontWeight: "700" }}>
               {dateDisplay || "Select date (DD-MMM-YYYY)"}
             </Text>
@@ -708,50 +793,6 @@ function PlannerItemForm({
       <View style={{ marginBottom: 12 }}>
         <Text style={s.label}>Subject code (optional)</Text>
         <SubjectCodePicker subjects={subjects} value={subjectCode} onChange={setSubjectCode} theme={theme} s={s} />
-      </View>
-
-      {showWeight && (
-        <View style={{ marginBottom: 12 }}>
-          <Text style={s.label}>Weight % (optional)</Text>
-          <TextInput
-            value={weightStr}
-            onChangeText={(t) => setWeightStr(t.replace(/[^0-9.]/g, ""))}
-            placeholder="e.g. 20"
-            placeholderTextColor={theme.textMuted}
-            keyboardType={Platform.OS === "ios" ? "decimal-pad" : "number-pad"}
-            inputMode="decimal"
-            style={s.input}
-          />
-          <Text style={[s.helperText, { color: theme.textMuted, marginTop: 6 }]}>
-            Planner does not show grade inputs. Use the Grade Planner per subject for marks.
-          </Text>
-        </View>
-      )}
-
-      <View style={{ marginBottom: 12 }}>
-        <Pressable
-          onPress={() => setIsComplete((p) => !p)}
-          style={[
-            s.completeRow,
-            {
-              borderColor: isComplete ? theme.success : theme.border,
-              backgroundColor: theme.card,
-            },
-          ]}
-        >
-          <Ionicons
-            name={isComplete ? "checkbox-outline" : "square-outline"}
-            size={22}
-            color={isComplete ? theme.success : theme.textMuted}
-          />
-          <Text style={[s.completeText, { color: isComplete ? theme.success : theme.textMuted }]}>
-            {isComplete ? "Marked as complete" : "Mark as complete"}
-          </Text>
-        </Pressable>
-
-        <Text style={[s.helperText, { color: theme.textMuted, marginTop: 6 }]}>
-          Tip: You can mark assessments complete even if you don’t have a grade yet.
-        </Text>
       </View>
 
       <View style={{ marginBottom: 16 }}>
@@ -852,9 +893,9 @@ const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
       backgroundColor: t.card,
       borderColor: t.border,
       borderWidth: 1,
+      borderLeftWidth: 6,
     },
     itemTitle: { color: t.text, fontWeight: "900", fontSize: 15 },
-
     itemNotes: { marginTop: 8, fontSize: 12, lineHeight: 16 },
 
     pill: {
@@ -882,20 +923,28 @@ const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
       marginTop: 2,
     },
 
-    sheet: {
-      width: "100%",
-      backgroundColor: t.bg,
-      borderTopColor: t.border,
-      borderTopWidth: 1,
-      borderTopLeftRadius: 24,
-      borderTopRightRadius: 24,
-      padding: 16,
-      maxHeight: "85%",
+    // ✅ centered modal
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.6)",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 22,
     },
+    modalCard: {
+      width: "100%",
+      maxWidth: 520,
+      maxHeight: "88%",
+      backgroundColor: t.bg,
+      borderColor: t.border,
+      borderWidth: 1,
+      borderRadius: 20,
+      padding: 16,
+    },
+
     sheetTitle: { color: t.text, fontSize: 18, fontWeight: "900", marginBottom: 12 },
 
     label: { color: t.textMuted, fontSize: 12, marginBottom: 6, fontWeight: "700" },
-
     helperText: { fontSize: 12, lineHeight: 16 },
 
     inputWrap: { position: "relative", width: "100%" },
@@ -924,6 +973,29 @@ const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
       justifyContent: "center",
     },
 
+    // ✅ 2-column tag grid so all 6 are visible nicely
+    kindGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "space-between",
+      rowGap: 10,
+      columnGap: 10,
+      marginTop: 2,
+    },
+    kindChip: {
+      width: "48%",
+      paddingVertical: 10,
+      paddingHorizontal: 10,
+      borderRadius: 999,
+      borderWidth: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    kindChipText: {
+      fontSize: 12,
+      fontWeight: "900",
+    },
+
     chip: {
       paddingVertical: 8,
       paddingHorizontal: 12,
@@ -935,17 +1007,6 @@ const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
     },
     chipActive: { backgroundColor: t.bg },
     chipText: { fontSize: 12, color: t.textMuted, fontWeight: "900" },
-
-    completeRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-      paddingVertical: 12,
-      paddingHorizontal: 12,
-      borderRadius: 14,
-      borderWidth: 1,
-    },
-    completeText: { fontWeight: "900" },
 
     btn: { flex: 1, borderRadius: 14, paddingVertical: 12, alignItems: "center" },
     btnText: { fontWeight: "900" },

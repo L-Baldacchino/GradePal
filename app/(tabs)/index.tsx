@@ -313,12 +313,7 @@ const SubjectRow: React.FC<SubjectRowProps> = ({
             </Pressable>
 
             {canDrag ? (
-              <Pressable
-                onLongPress={drag}
-                delayLongPress={140}
-                style={styles.actionIconBtn}
-                hitSlop={10}
-              >
+              <Pressable onLongPress={drag} delayLongPress={140} style={styles.actionIconBtn} hitSlop={10}>
                 <Ionicons name="reorder-three-outline" size={22} color={theme.textMuted} />
               </Pressable>
             ) : null}
@@ -336,9 +331,7 @@ export default function SubjectsScreen() {
   const s = makeStyles(theme);
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
-
   const [isDragging, setIsDragging] = useState(false);
-
 
   const [addOpen, setAddOpen] = useState(false);
 
@@ -502,6 +495,19 @@ export default function SubjectsScreen() {
     return 4;
   }
 
+  // ✅ NEW: unified modal closers (tap outside or Android back)
+  const closeAddModal = useCallback(() => {
+    Keyboard.dismiss();
+    setAddOpen(false);
+    resetAddForm();
+  }, []);
+
+  const closeEditModal = useCallback(() => {
+    Keyboard.dismiss();
+    setEditOpen(false);
+    setEditing(null);
+  }, []);
+
   const addSubject = async () => {
     if (!code.trim() || !name.trim()) {
       Alert.alert("Missing info", "Please enter both subject code and name.");
@@ -536,9 +542,7 @@ export default function SubjectsScreen() {
 
     const next = [newSub, ...subjects];
     await persist(next).catch(() => {});
-    Keyboard.dismiss();
-    setAddOpen(false);
-    resetAddForm();
+    closeAddModal(); // ✅ consistent close + reset
   };
 
   const handleReorderActive = async (activeOrdered: Subject[]) => {
@@ -585,7 +589,8 @@ export default function SubjectsScreen() {
     const numMax = maxNumForType(editPeriodType);
     const n = clamp(editPeriodNum, 1, numMax);
 
-    const updatedTagLabel = editTagKey === "custom" ? editCustomTag.trim() || "Custom" : getTagLabelFromForm(editTagKey, "");
+    const updatedTagLabel =
+      editTagKey === "custom" ? editCustomTag.trim() || "Custom" : getTagLabelFromForm(editTagKey, "");
 
     const next = subjects.map((s) => {
       if (s.code !== editing.code) return s;
@@ -602,9 +607,7 @@ export default function SubjectsScreen() {
     });
 
     await persist(next).catch(() => {});
-    Keyboard.dismiss();
-    setEditOpen(false);
-    setEditing(null);
+    closeEditModal(); // ✅ consistent close
   }
 
   function openRemoveModal(sub: Subject) {
@@ -638,7 +641,7 @@ export default function SubjectsScreen() {
         styles={s}
         onEdit={openEditModal}
         onRemove={openRemoveModal}
-        canDrag={true}        
+        canDrag={true}
       />
     );
   };
@@ -670,13 +673,11 @@ export default function SubjectsScreen() {
   }, [completedList, theme, s]);
 
   return (
-    // ✅ NEW: tapping anywhere outside inputs dismisses keyboard
+    // ✅ tapping anywhere outside inputs dismisses keyboard
     <Pressable style={{ flex: 1 }} onPress={() => Keyboard.dismiss()}>
       <View style={[s.screen]}>
         <Text style={s.title}>Subjects</Text>
-        <Text style={s.subtitle}>
-          Tap a subject to open its grade planner. Long-press ≡ to reorder active subjects.
-        </Text>
+        <Text style={s.subtitle}>Tap a subject to open its grade planner. Long-press ≡ to reorder active subjects.</Text>
 
         <View style={s.divider} />
 
@@ -716,10 +717,15 @@ export default function SubjectsScreen() {
         />
 
         {/* ADD MODAL */}
-        <Modal visible={addOpen} transparent animationType="fade" onRequestClose={() => setAddOpen(false)}>
-          {/* ✅ overlay dismisses keyboard */}
-          <Pressable style={s.modalOverlay} onPress={() => Keyboard.dismiss()}>
-            {/* ✅ inner card prevents dismiss when tapping inside */}
+        <Modal
+          visible={addOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={closeAddModal} // ✅ Android back
+        >
+          {/* ✅ overlay click closes modal (like planner.tsx behavior) */}
+          <Pressable style={s.modalOverlay} onPress={closeAddModal}>
+            {/* ✅ inner card prevents close when tapping inside */}
             <Pressable
               style={[s.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}
               onPress={() => {}}
@@ -889,14 +895,7 @@ export default function SubjectsScreen() {
               </View>
 
               <View style={s.modalButtonsRow}>
-                <Pressable
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    setAddOpen(false);
-                    resetAddForm();
-                  }}
-                  style={[s.modalBtn, { backgroundColor: theme.border }]}
-                >
+                <Pressable onPress={closeAddModal} style={[s.modalBtn, { backgroundColor: theme.border }]}>
                   <Text style={[s.modalBtnText, { color: theme.text }]}>Cancel</Text>
                 </Pressable>
 
@@ -909,8 +908,14 @@ export default function SubjectsScreen() {
         </Modal>
 
         {/* EDIT MODAL */}
-        <Modal visible={editOpen} transparent animationType="fade" onRequestClose={() => setEditOpen(false)}>
-          <Pressable style={s.modalOverlay} onPress={() => Keyboard.dismiss()}>
+        <Modal
+          visible={editOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={closeEditModal} // ✅ Android back
+        >
+          {/* ✅ overlay click closes modal */}
+          <Pressable style={s.modalOverlay} onPress={closeEditModal}>
             <Pressable
               style={[s.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}
               onPress={() => {}}
@@ -1063,14 +1068,7 @@ export default function SubjectsScreen() {
               </View>
 
               <View style={s.modalButtonsRow}>
-                <Pressable
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    setEditOpen(false);
-                    setEditing(null);
-                  }}
-                  style={[s.modalBtn, { backgroundColor: theme.border }]}
-                >
+                <Pressable onPress={closeEditModal} style={[s.modalBtn, { backgroundColor: theme.border }]}>
                   <Text style={[s.modalBtnText, { color: theme.text }]}>Cancel</Text>
                 </Pressable>
 
@@ -1095,14 +1093,10 @@ export default function SubjectsScreen() {
           <Pressable style={s.modalOverlay} onPress={() => {}}>
             <View style={[s.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
               <Text style={[s.modalTitle, { color: theme.text }]}>Remove subject</Text>
-              <Text style={[s.modalSub, { color: theme.textMuted }]}>
-                {removing ? `${removing.code} — ${removing.name}` : ""}
-              </Text>
+              <Text style={[s.modalSub, { color: theme.textMuted }]}>{removing ? `${removing.code} — ${removing.name}` : ""}</Text>
 
               <View style={{ marginTop: 12 }}>
-                <Text style={[s.helperText, { color: theme.textMuted }]}>
-                  This will also delete its saved grade planner data.
-                </Text>
+                <Text style={[s.helperText, { color: theme.textMuted }]}>This will also delete its saved grade planner data.</Text>
               </View>
 
               <View style={s.modalButtonsRow}>

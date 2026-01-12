@@ -18,7 +18,7 @@ export type TimelineEvent = {
   dateISO: string; // YYYY-MM-DD
 
   kind: TimelineKind;
-
+  customLabel?: string;
   subjectCode?: string; // e.g. CSE3MAD
   weight?: number; // for assessments/exams
   grade?: number; // if present -> completed for assessments/exams
