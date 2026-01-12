@@ -124,6 +124,12 @@ View:
 - Last 3 sessions
 - All-time totals per subject
 
+### 💬 Planner Tab
+- Add items for planning
+- auto adds assignments and exams
+- auto orders based on date (upcoming at the top)
+
+
 ### 💬 Support Tab
 - Buy the developer a coffee ☕️
 - Send feedback via email
