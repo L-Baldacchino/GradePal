@@ -781,9 +781,9 @@ export default function SubjectsScreen() {
 
           {/* ✅ Keyboard-safe modal: scroll + keyboard avoiding */}
           <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={{ width: "100%", maxWidth: 520 }}
-          >
+              behavior={Platform.OS === "ios" ? "padding" : "padding"}
+              style={{ width: "100%", maxWidth: 520, flex: 1 }}
+            >
             <View style={[s.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
               <Text style={[s.modalTitle, { color: theme.text }]}>Add subject</Text>
 
@@ -975,9 +975,9 @@ export default function SubjectsScreen() {
           <Pressable style={StyleSheet.absoluteFill} onPress={closeEditModal} />
 
           <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={{ width: "100%", maxWidth: 520 }}
-          >
+              behavior={Platform.OS === "ios" ? "padding" : "padding"}
+              style={{ width: "100%", maxWidth: 520, flex: 1 }}
+            >
             <View style={[s.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
               <Text style={[s.modalTitle, { color: theme.text }]}>
                 Edit {editing?.code ?? ""}
@@ -1282,9 +1282,9 @@ const makeStyles = (t: any) =>
       right: 0,
       bottom: 0,
       backgroundColor: "rgba(0,0,0,0.55)",
-      justifyContent: "center",
       alignItems: "center",
       padding: 22,
+      justifyContent: Platform.OS === "android" ? "flex-end" : "center",
     },
     modalCard: {
       width: "100%",
@@ -1292,7 +1292,8 @@ const makeStyles = (t: any) =>
       padding: 16,
       borderWidth: 1,
       maxWidth: 520,
-      maxHeight: "97%",
+      maxHeight: "90%",
+      flexShrink: 0,
     },
     modalTitle: { fontSize: 18, fontWeight: "900" },
 
