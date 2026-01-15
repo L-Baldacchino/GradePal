@@ -9,18 +9,19 @@ import {
   Alert,
   Animated,
   Keyboard,
+  KeyboardAvoidingView,
   Linking,
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import DraggableFlatList, { RenderItemParams } from "react-native-draggable-flatlist";
-import { Swipeable } from "react-native-gesture-handler";
+import { Swipeable, RectButton } from "react-native-gesture-handler";
 import { useTheme } from "../../theme/ThemeProvider";
 
 /** ---------- Types ---------- */
@@ -133,8 +134,7 @@ function safeParseSubjects(raw: string | null): Subject[] {
 
 function subjectCountsTowardWAM(s: Subject): number | undefined {
   if (typeof s.finalMark === "number" && Number.isFinite(s.finalMark)) return s.finalMark;
-  if (s.isExempt && typeof s.exemptFinalMark === "number" && Number.isFinite(s.exemptFinalMark))
-    return s.exemptFinalMark;
+  if (s.isExempt && typeof s.exemptFinalMark === "number" && Number.isFinite(s.exemptFinalMark)) return s.exemptFinalMark;
   return undefined;
 }
 
@@ -145,12 +145,8 @@ function isCompletedSubject(s: Subject) {
 }
 
 function calcOverallWAM(subjects: Subject[]): { wam?: number; counted: number } {
-  const marks = subjects
-    .map(subjectCountsTowardWAM)
-    .filter((m): m is number => typeof m === "number" && Number.isFinite(m));
-
+  const marks = subjects.map(subjectCountsTowardWAM).filter((m): m is number => typeof m === "number" && Number.isFinite(m));
   if (marks.length === 0) return { wam: undefined, counted: 0 };
-
   const sum = marks.reduce((acc, m) => acc + m, 0);
   return { wam: sum / marks.length, counted: marks.length };
 }
@@ -202,19 +198,9 @@ type SubjectRowProps = {
   canDrag: boolean;
 };
 
-const SubjectRow: React.FC<SubjectRowProps> = ({
-  item,
-  drag,
-  isActive,
-  theme,
-  styles,
-  onEdit,
-  onRequestDelete,
-  canDrag,
-}) => {
+const SubjectRow: React.FC<SubjectRowProps> = ({ item, drag, isActive, theme, styles, onEdit, onRequestDelete, canDrag }) => {
   const router = useRouter();
   const wobbleAnim = useRef(new Animated.Value(0)).current;
-
   const swipeRef = useRef<Swipeable | null>(null);
 
   useEffect(() => {
@@ -292,56 +278,72 @@ const SubjectRow: React.FC<SubjectRowProps> = ({
             completed && styles.completedCard,
           ]}
         >
-          <Pressable
-            style={{ flex: 1, paddingRight: 10 }}
-            onPress={() => router.push(`/grade-planner/${encodeURIComponent(item.code)}`)}
-          >
-            <View style={styles.subjectTopRow}>
-              <Text style={{ flex: 1 }}>
-                <Text style={styles.subjectCode}>{item.code}</Text>
-                <Text style={styles.subjectName}> – {item.name}</Text>
-              </Text>
-
-              <View style={[styles.tagPill, { borderColor: accent }]}>
-                <Text style={[styles.tagText, { color: accent }]} numberOfLines={1}>
-                  {tagText}
+          <View style={{ flex: 1 }}>
+            {/* Main tap area goes to planner */}
+            <Pressable onPress={() => router.push(`/grade-planner/${encodeURIComponent(item.code)}`)} style={{ paddingRight: 10 }}>
+              <View style={styles.subjectTopRow}>
+                <Text style={{ flex: 1 }}>
+                  <Text style={styles.subjectCode}>{item.code}</Text>
+                  <Text style={styles.subjectName}> – {item.name}</Text>
                 </Text>
+
+                <View style={[styles.tagPill, { borderColor: accent }]}>
+                  <Text style={[styles.tagText, { color: accent }]} numberOfLines={1}>
+                    {tagText}
+                  </Text>
+                </View>
               </View>
-            </View>
 
-            <View style={{ marginTop: 8 }}>
-              {item.isExempt ? (
-                <Text style={[styles.metaText, { color: theme.textMuted }]}>
-                  Exempt{typeof item.exemptFinalMark === "number" ? ` • Grade: ${item.exemptFinalMark.toFixed(1)}%` : ""}
-                </Text>
-              ) : typeof item.finalMark === "number" ? (
-                <Text style={[styles.metaText, { color: theme.textMuted }]}>Final: {item.finalMark.toFixed(1)}%</Text>
-              ) : null}
+              <View style={{ marginTop: 8 }}>
+                {item.isExempt ? (
+                  <Text style={[styles.metaText, { color: theme.textMuted }]}>
+                    Exempt{typeof item.exemptFinalMark === "number" ? ` • Grade: ${item.exemptFinalMark.toFixed(1)}%` : ""}
+                  </Text>
+                ) : typeof item.finalMark === "number" ? (
+                  <Text style={[styles.metaText, { color: theme.textMuted }]}>Final: {item.finalMark.toFixed(1)}%</Text>
+                ) : null}
 
-              {typeof mark === "number" ? (
-                <Text style={[styles.metaTiny, { color: theme.textMuted }]}>Counts toward WAM</Text>
-              ) : null}
-            </View>
+                {typeof mark === "number" ? (
+                  <Text style={[styles.metaTiny, { color: theme.textMuted }]}>Counts toward WAM</Text>
+                ) : null}
+              </View>
+            </Pressable>
 
+            {/* Bottom row: NOT inside the main pressable, so icons work */}
             <View style={styles.subjectBottomRow}>
-              <Text style={[styles.periodText, { color: theme.textMuted }]} numberOfLines={1}>
-                {periodLabel}
-                {completed ? "  •  Completed" : ""}
-              </Text>
+              <Pressable style={{ flex: 1 }} onPress={() => router.push(`/grade-planner/${encodeURIComponent(item.code)}`)}>
+                <Text style={[styles.periodText, { color: theme.textMuted }]} numberOfLines={1}>
+                  {periodLabel}
+                  {completed ? "  •  Completed" : ""}
+                </Text>
+              </Pressable>
 
-              <View style={styles.actionsRow}>
-                <Pressable onPress={() => onEdit(item)} style={styles.actionIconBtn} hitSlop={10}>
+              <View style={styles.actionsRow} pointerEvents="box-none">
+                {/* ✅ RectButton so Swipeable doesn't steal the tap */}
+                <RectButton
+                  style={styles.actionIconBtn}
+                  onPress={() => onEdit(item)}
+                >
                   <Ionicons name="create-outline" size={18} color={theme.textMuted} />
-                </Pressable>
+                </RectButton>
 
                 {canDrag ? (
-                  <Pressable onLongPress={drag} delayLongPress={140} style={styles.actionIconBtn} hitSlop={10}>
+                  <Pressable
+                    onLongPress={(ev: any) => {
+                      ev?.stopPropagation?.();
+                      drag?.();
+                    }}
+                    onPressIn={(ev: any) => ev?.stopPropagation?.()}
+                    delayLongPress={140}
+                    style={styles.actionIconBtn}
+                    hitSlop={12}
+                  >
                     <Ionicons name="reorder-three-outline" size={22} color={theme.textMuted} />
                   </Pressable>
                 ) : null}
               </View>
             </View>
-          </Pressable>
+          </View>
         </Animated.View>
       </Swipeable>
     </View>
@@ -620,8 +622,7 @@ export default function SubjectsScreen() {
     const numMax = maxNumForType(editPeriodType);
     const n = clamp(editPeriodNum, 1, numMax);
 
-    const updatedTagLabel =
-      editTagKey === "custom" ? editCustomTag.trim() || "Custom" : getTagLabelFromForm(editTagKey, "");
+    const updatedTagLabel = editTagKey === "custom" ? editCustomTag.trim() || "Custom" : getTagLabelFromForm(editTagKey, "");
 
     const next = subjects.map((s) => {
       if (s.code !== editing.code) return s;
@@ -632,8 +633,7 @@ export default function SubjectsScreen() {
         tagKey: editTagKey,
         tagLabel: updatedTagLabel,
         isExempt: editIsExempt ? true : false,
-        exemptFinalMark:
-          editIsExempt && editExemptGrade.trim() !== "" ? clamp(toNum(editExemptGrade.trim()), 0, 100) : undefined,
+        exemptFinalMark: editIsExempt && editExemptGrade.trim() !== "" ? clamp(toNum(editExemptGrade.trim()), 0, 100) : undefined,
       };
     });
 
@@ -641,18 +641,14 @@ export default function SubjectsScreen() {
     closeEditModal();
   }
 
-  //  Swipe-delete with warning confirm
+  // Swipe-delete with warning confirm
   const requestDeleteSubject = useCallback(
     (sub: Subject, closeSwipe: () => void) => {
       Alert.alert(
         "Delete subject",
         `Are you sure you want to delete the ${sub.code} subject?`,
         [
-          {
-            text: "Cancel",
-            style: "cancel",
-            onPress: () => closeSwipe(),
-          },
+          { text: "Cancel", style: "cancel", onPress: () => closeSwipe() },
           {
             text: "Delete",
             style: "destructive",
@@ -719,7 +715,6 @@ export default function SubjectsScreen() {
     );
   }, [completedList, theme, s, requestDeleteSubject]);
 
-  //  Put the header inside the list so blank space scroll works
   const ListHeader = useMemo(() => {
     return (
       <View>
@@ -770,7 +765,6 @@ export default function SubjectsScreen() {
         onScrollBeginDrag={() => Keyboard.dismiss()}
         ListHeaderComponent={ListHeader}
         ListFooterComponent={CompletedSection}
-        //  flexGrow makes the "blank area" part of the scrollable surface
         contentContainerStyle={{
           paddingHorizontal: 16,
           paddingTop: 12,
@@ -785,167 +779,181 @@ export default function SubjectsScreen() {
           {/* Tap outside the card closes modal */}
           <Pressable style={StyleSheet.absoluteFill} onPress={closeAddModal} />
 
-          {/* Card: tap blank space inside dismisses keyboard */}
-          <Pressable
-            style={[s.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}
-            onPress={() => Keyboard.dismiss()}
+          {/* ✅ Keyboard-safe modal: scroll + keyboard avoiding */}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{ width: "100%", maxWidth: 520 }}
           >
-            {/* IMPORTANT: stop taps on controls from triggering the card onPress */}
-            <View pointerEvents="box-none">
+            <View style={[s.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
               <Text style={[s.modalTitle, { color: theme.text }]}>Add subject</Text>
 
-              <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 10 }]}>Subject code</Text>
-              <TextInput
-                value={code}
-                onChangeText={(t) => setCode(t.toUpperCase())}
-                placeholder="e.g. CSE3MAD"
-                placeholderTextColor={theme.textMuted}
-                style={s.inputCompact}
-                autoCapitalize="characters"
-                autoCorrect={false}
-                returnKeyType="next"
-              />
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ paddingBottom: 12 }}
+                showsVerticalScrollIndicator={false}
+              >
+                {/* Tap blank space inside content dismisses keyboard */}
+                <Pressable style={{ height: 6 }} onPress={() => Keyboard.dismiss()} />
 
-              <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 10 }]}>Subject name</Text>
-              <TextInput
-                value={name}
-                onChangeText={setName}
-                placeholder="e.g. Mobile App Development"
-                placeholderTextColor={theme.textMuted}
-                style={s.inputCompact}
-                autoCapitalize="words"
-                autoCorrect={false}
-                returnKeyType="done"
-              />
+                <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 10 }]}>Subject code</Text>
+                <TextInput
+                  value={code}
+                  onChangeText={(t) => setCode(t.toUpperCase())}
+                  placeholder="e.g. CSE3MAD"
+                  placeholderTextColor={theme.textMuted}
+                  style={s.inputCompact}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  returnKeyType="next"
+                />
 
-              <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 12 }]}>Commencement period</Text>
+                <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 10 }]}>Subject name</Text>
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="e.g. Mobile App Development"
+                  placeholderTextColor={theme.textMuted}
+                  style={s.inputCompact}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                  returnKeyType="done"
+                />
 
-              <View style={s.inlineRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[s.microLabel, { color: theme.textMuted }]}>Year</Text>
-                  <TextInput
-                    value={year}
-                    onChangeText={(t) => setYear(t.replace(/[^0-9]/g, ""))}
-                    placeholder="2027"
-                    placeholderTextColor={theme.textMuted}
-                    keyboardType={Platform.OS === "ios" ? "number-pad" : "numeric"}
-                    inputMode="numeric"
-                    style={s.inputCompact}
-                  />
+                <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 12 }]}>Commencement period</Text>
+
+                <View style={s.inlineRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.microLabel, { color: theme.textMuted }]}>Year</Text>
+                    <TextInput
+                      value={year}
+                      onChangeText={(t) => setYear(t.replace(/[^0-9]/g, ""))}
+                      placeholder="2027"
+                      placeholderTextColor={theme.textMuted}
+                      keyboardType={Platform.OS === "ios" ? "number-pad" : "numeric"}
+                      inputMode="numeric"
+                      style={s.inputCompact}
+                    />
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.microLabel, { color: theme.textMuted }]}>Number</Text>
+                    <View style={s.numRow}>
+                      {Array.from({ length: maxNumForType(periodType) }, (_, i) => i + 1).map((n) => {
+                        const active = periodNum === n;
+                        return (
+                          <Pressable
+                            key={n}
+                            onPress={() => setPeriodNum(n)}
+                            style={[
+                              s.numChip,
+                              { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card },
+                            ]}
+                          >
+                            <Text style={[s.numChipText, { color: active ? theme.primary : theme.textMuted }]}>{n}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
                 </View>
 
-                <View style={{ flex: 1 }}>
-                  <Text style={[s.microLabel, { color: theme.textMuted }]}>Number</Text>
-                  <View style={s.numRow}>
-                    {Array.from({ length: maxNumForType(periodType) }, (_, i) => i + 1).map((n) => {
-                      const active = periodNum === n;
+                <View style={{ marginTop: 10 }}>
+                  <Text style={[s.microLabel, { color: theme.textMuted }]}>Type</Text>
+                  <View style={s.chipsRow}>
+                    {(["Semester", "Trimester", "Term"] as PeriodType[]).map((pt) => {
+                      const active = periodType === pt;
                       return (
                         <Pressable
-                          key={n}
-                          onPress={() => setPeriodNum(n)}
-                          style={[s.numChip, { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card }]}
+                          key={pt}
+                          onPress={() => {
+                            setPeriodType(pt);
+                            const mx = maxNumForType(pt);
+                            setPeriodNum((prev) => Math.min(prev, mx));
+                          }}
+                          style={[s.chip, { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card }]}
                         >
-                          <Text style={[s.numChipText, { color: active ? theme.primary : theme.textMuted }]}>{n}</Text>
+                          <Text style={[s.chipText, { color: active ? theme.primary : theme.textMuted }]}>{pt}</Text>
                         </Pressable>
                       );
                     })}
                   </View>
-                </View>
-              </View>
 
-              <View style={{ marginTop: 10 }}>
-                <Text style={[s.microLabel, { color: theme.textMuted }]}>Type</Text>
+                  <Text style={[s.helperText, { color: theme.textMuted }]}>Example: 2027 • Semester 1</Text>
+                </View>
+
+                <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 12 }]}>Tag</Text>
                 <View style={s.chipsRow}>
-                  {(["Semester", "Trimester", "Term"] as PeriodType[]).map((pt) => {
-                    const active = periodType === pt;
+                  {([
+                    { key: "core", label: "Core" },
+                    { key: "major", label: "Major" },
+                    { key: "minor", label: "Minor" },
+                    { key: "elective", label: "Elective" },
+                    { key: "custom", label: "Custom" },
+                  ] as { key: TagKey; label: string }[]).map((x) => {
+                    const active = tagKey === x.key;
+                    const tv = getTagVisual(x.key);
                     return (
                       <Pressable
-                        key={pt}
-                        onPress={() => {
-                          setPeriodType(pt);
-                          const mx = maxNumForType(pt);
-                          setPeriodNum((prev) => Math.min(prev, mx));
-                        }}
-                        style={[s.chip, { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card }]}
+                        key={x.key}
+                        onPress={() => setTagKey(x.key)}
+                        style={[s.chip, { borderColor: active ? tv.color : theme.border, backgroundColor: theme.card }]}
                       >
-                        <Text style={[s.chipText, { color: active ? theme.primary : theme.textMuted }]}>{pt}</Text>
+                        <Text style={[s.chipText, { color: active ? tv.color : theme.textMuted }]}>{x.label}</Text>
                       </Pressable>
                     );
                   })}
                 </View>
 
-                <Text style={[s.helperText, { color: theme.textMuted }]}>Example: 2027 • Semester 1</Text>
-              </View>
-
-              <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 12 }]}>Tag</Text>
-              <View style={s.chipsRow}>
-                {([
-                  { key: "core", label: "Core" },
-                  { key: "major", label: "Major" },
-                  { key: "minor", label: "Minor" },
-                  { key: "elective", label: "Elective" },
-                  { key: "custom", label: "Custom" },
-                ] as { key: TagKey; label: string }[]).map((x) => {
-                  const active = tagKey === x.key;
-                  const tv = getTagVisual(x.key);
-                  return (
-                    <Pressable
-                      key={x.key}
-                      onPress={() => setTagKey(x.key)}
-                      style={[s.chip, { borderColor: active ? tv.color : theme.border, backgroundColor: theme.card }]}
-                    >
-                      <Text style={[s.chipText, { color: active ? tv.color : theme.textMuted }]}>{x.label}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-
-              {tagKey === "custom" && (
-                <TextInput
-                  value={customTag}
-                  onChangeText={setCustomTag}
-                  placeholder="Enter custom tag (e.g. Minor)"
-                  placeholderTextColor={theme.textMuted}
-                  style={[s.inputCompact, { marginTop: 10 }]}
-                  autoCapitalize="words"
-                  autoCorrect={false}
-                />
-              )}
-
-              <View style={{ marginTop: 14 }}>
-                <Pressable
-                  onPress={() => {
-                    setIsExempt((p) => !p);
-                    if (isExempt) setExemptGrade("");
-                  }}
-                  style={[s.togglePill, { borderColor: isExempt ? theme.primary : theme.border, backgroundColor: theme.card }]}
-                >
-                  <Text style={[s.toggleText, { color: isExempt ? theme.primary : theme.textMuted }]}>
-                    {isExempt ? "Exempt subject ✓" : "Exempt subject"}
-                  </Text>
-                </Pressable>
-
-                {isExempt && (
-                  <View style={{ marginTop: 10 }}>
-                    <Text style={[s.microLabel, { color: theme.textMuted }]}>Exempt grade (optional)</Text>
-                    <TextInput
-                      value={exemptGrade}
-                      onChangeText={(t) => setExemptGrade(t.replace(/[^0-9.]/g, ""))}
-                      placeholder="e.g. 75"
-                      placeholderTextColor={theme.textMuted}
-                      keyboardType={Platform.OS === "ios" ? "decimal-pad" : "number-pad"}
-                      inputMode="decimal"
-                      style={s.inputCompact}
-                    />
-                    <Text style={[s.helperText, { color: theme.textMuted }]}>
-                      Leave blank if no grade was awarded (it won’t count toward WAM).
-                    </Text>
-                  </View>
+                {tagKey === "custom" && (
+                  <TextInput
+                    value={customTag}
+                    onChangeText={setCustomTag}
+                    placeholder="Enter custom tag (e.g. Minor)"
+                    placeholderTextColor={theme.textMuted}
+                    style={[s.inputCompact, { marginTop: 10 }]}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                  />
                 )}
-              </View>
 
-            
-              <Pressable onPress={() => Keyboard.dismiss()} style={s.keyboardDismissSpacer} />
+                <View style={{ marginTop: 14 }}>
+                  <Pressable
+                    onPress={() => {
+                      setIsExempt((p) => !p);
+                      if (isExempt) setExemptGrade("");
+                    }}
+                    style={[
+                      s.togglePill,
+                      { borderColor: isExempt ? theme.primary : theme.border, backgroundColor: theme.card },
+                    ]}
+                  >
+                    <Text style={[s.toggleText, { color: isExempt ? theme.primary : theme.textMuted }]}>
+                      {isExempt ? "Exempt subject ✓" : "Exempt subject"}
+                    </Text>
+                  </Pressable>
+
+                  {isExempt && (
+                    <View style={{ marginTop: 10 }}>
+                      <Text style={[s.microLabel, { color: theme.textMuted }]}>Exempt grade (optional)</Text>
+                      <TextInput
+                        value={exemptGrade}
+                        onChangeText={(t) => setExemptGrade(t.replace(/[^0-9.]/g, ""))}
+                        placeholder="e.g. 75"
+                        placeholderTextColor={theme.textMuted}
+                        keyboardType={Platform.OS === "ios" ? "decimal-pad" : "number-pad"}
+                        inputMode="decimal"
+                        style={s.inputCompact}
+                      />
+                      <Text style={[s.helperText, { color: theme.textMuted }]}>
+                        Leave blank if no grade was awarded (it won’t count toward WAM).
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* bottom blank space to tap */}
+                <Pressable style={{ height: 18 }} onPress={() => Keyboard.dismiss()} />
+              </ScrollView>
 
               <View style={s.modalButtonsRow}>
                 <Pressable onPress={closeAddModal} style={[s.modalBtn, { backgroundColor: theme.border }]}>
@@ -957,12 +965,178 @@ export default function SubjectsScreen() {
                 </Pressable>
               </View>
             </View>
-          </Pressable>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
+      {/* EDIT MODAL */}
+      <Modal visible={editOpen} transparent animationType="fade" onRequestClose={closeEditModal}>
+        <View style={s.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeEditModal} />
 
-      
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{ width: "100%", maxWidth: 520 }}
+          >
+            <View style={[s.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Text style={[s.modalTitle, { color: theme.text }]}>
+                Edit {editing?.code ?? ""}
+              </Text>
+
+              <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 12 }} showsVerticalScrollIndicator={false}>
+                <Pressable style={{ height: 6 }} onPress={() => Keyboard.dismiss()} />
+
+                <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 10 }]}>Subject name</Text>
+                <TextInput
+                  value={editName}
+                  onChangeText={setEditName}
+                  placeholder="e.g. Mobile App Development"
+                  placeholderTextColor={theme.textMuted}
+                  style={s.inputCompact}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                />
+
+                <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 12 }]}>Commencement period</Text>
+
+                <View style={s.inlineRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.microLabel, { color: theme.textMuted }]}>Year</Text>
+                    <TextInput
+                      value={editYear}
+                      onChangeText={(t) => setEditYear(t.replace(/[^0-9]/g, ""))}
+                      placeholder="2027"
+                      placeholderTextColor={theme.textMuted}
+                      keyboardType={Platform.OS === "ios" ? "number-pad" : "numeric"}
+                      inputMode="numeric"
+                      style={s.inputCompact}
+                    />
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.microLabel, { color: theme.textMuted }]}>Number</Text>
+                    <View style={s.numRow}>
+                      {Array.from({ length: maxNumForType(editPeriodType) }, (_, i) => i + 1).map((n) => {
+                        const active = editPeriodNum === n;
+                        return (
+                          <Pressable
+                            key={n}
+                            onPress={() => setEditPeriodNum(n)}
+                            style={[
+                              s.numChip,
+                              { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card },
+                            ]}
+                          >
+                            <Text style={[s.numChipText, { color: active ? theme.primary : theme.textMuted }]}>{n}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                </View>
+
+                <View style={{ marginTop: 10 }}>
+                  <Text style={[s.microLabel, { color: theme.textMuted }]}>Type</Text>
+                  <View style={s.chipsRow}>
+                    {(["Semester", "Trimester", "Term"] as PeriodType[]).map((pt) => {
+                      const active = editPeriodType === pt;
+                      return (
+                        <Pressable
+                          key={pt}
+                          onPress={() => {
+                            setEditPeriodType(pt);
+                            const mx = maxNumForType(pt);
+                            setEditPeriodNum((prev) => Math.min(prev, mx));
+                          }}
+                          style={[s.chip, { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card }]}
+                        >
+                          <Text style={[s.chipText, { color: active ? theme.primary : theme.textMuted }]}>{pt}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 12 }]}>Tag</Text>
+                <View style={s.chipsRow}>
+                  {([
+                    { key: "core", label: "Core" },
+                    { key: "major", label: "Major" },
+                    { key: "minor", label: "Minor" },
+                    { key: "elective", label: "Elective" },
+                    { key: "custom", label: "Custom" },
+                  ] as { key: TagKey; label: string }[]).map((x) => {
+                    const active = editTagKey === x.key;
+                    const tv = getTagVisual(x.key);
+                    return (
+                      <Pressable
+                        key={x.key}
+                        onPress={() => setEditTagKey(x.key)}
+                        style={[s.chip, { borderColor: active ? tv.color : theme.border, backgroundColor: theme.card }]}
+                      >
+                        <Text style={[s.chipText, { color: active ? tv.color : theme.textMuted }]}>{x.label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                {editTagKey === "custom" && (
+                  <TextInput
+                    value={editCustomTag}
+                    onChangeText={setEditCustomTag}
+                    placeholder="Enter custom tag"
+                    placeholderTextColor={theme.textMuted}
+                    style={[s.inputCompact, { marginTop: 10 }]}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                  />
+                )}
+
+                <View style={{ marginTop: 14 }}>
+                  <Pressable
+                    onPress={() => {
+                      setEditIsExempt((p) => !p);
+                      if (editIsExempt) setEditExemptGrade("");
+                    }}
+                    style={[s.togglePill, { borderColor: editIsExempt ? theme.primary : theme.border, backgroundColor: theme.card }]}
+                  >
+                    <Text style={[s.toggleText, { color: editIsExempt ? theme.primary : theme.textMuted }]}>
+                      {editIsExempt ? "Exempt subject ✓" : "Exempt subject"}
+                    </Text>
+                  </Pressable>
+
+                  {editIsExempt && (
+                    <View style={{ marginTop: 10 }}>
+                      <Text style={[s.microLabel, { color: theme.textMuted }]}>Exempt grade (optional)</Text>
+                      <TextInput
+                        value={editExemptGrade}
+                        onChangeText={(t) => setEditExemptGrade(t.replace(/[^0-9.]/g, ""))}
+                        placeholder="e.g. 75"
+                        placeholderTextColor={theme.textMuted}
+                        keyboardType={Platform.OS === "ios" ? "decimal-pad" : "number-pad"}
+                        inputMode="decimal"
+                        style={s.inputCompact}
+                      />
+                    </View>
+                  )}
+                </View>
+
+                <Pressable style={{ height: 18 }} onPress={() => Keyboard.dismiss()} />
+              </ScrollView>
+
+              <View style={s.modalButtonsRow}>
+                <Pressable onPress={closeEditModal} style={[s.modalBtn, { backgroundColor: theme.border }]}>
+                  <Text style={[s.modalBtnText, { color: theme.text }]}>Cancel</Text>
+                </Pressable>
+
+                <Pressable onPress={saveEditModal} style={[s.modalBtn, { backgroundColor: theme.primary }]}>
+                  <Text style={[s.modalBtnText, { color: theme.primaryText }]}>Save</Text>
+                </Pressable>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
 
       {/* Tutorial overlay */}
       {showTutorial && (
@@ -1036,49 +1210,16 @@ export default function SubjectsScreen() {
 
 const makeStyles = (t: any) =>
   StyleSheet.create({
-    screen: {
-      flex: 1,
-      backgroundColor: t.bg,
-    },
+    screen: { flex: 1, backgroundColor: t.bg },
 
-    title: {
-      color: t.text,
-      fontSize: 22,
-      fontWeight: "700",
-      marginBottom: 4,
-    },
-    subtitle: {
-      color: t.textMuted,
-      fontSize: 13,
-      marginBottom: 12,
-    },
-    divider: {
-      height: 1,
-      backgroundColor: t.border,
-      marginBottom: 12,
-    },
+    title: { color: t.text, fontSize: 22, fontWeight: "700", marginBottom: 4 },
+    subtitle: { color: t.textMuted, fontSize: 13, marginBottom: 12 },
+    divider: { height: 1, backgroundColor: t.border, marginBottom: 12 },
 
-    wamCard: {
-      borderWidth: 1,
-      borderRadius: 18,
-      padding: 14,
-      marginBottom: 12,
-    },
-    wamLabel: {
-      fontSize: 13,
-      fontWeight: "600",
-      marginBottom: 6,
-    },
-    wamValue: {
-      fontSize: 34,
-      fontWeight: "900",
-      letterSpacing: 0.3,
-    },
-    wamHelper: {
-      marginTop: 6,
-      fontSize: 12,
-      lineHeight: 16,
-    },
+    wamCard: { borderWidth: 1, borderRadius: 18, padding: 14, marginBottom: 12 },
+    wamLabel: { fontSize: 13, fontWeight: "600", marginBottom: 6 },
+    wamValue: { fontSize: 34, fontWeight: "900", letterSpacing: 0.3 },
+    wamHelper: { marginTop: 6, fontSize: 12, lineHeight: 16 },
 
     addBtn: {
       height: 48,
@@ -1089,18 +1230,10 @@ const makeStyles = (t: any) =>
       gap: 8,
       marginBottom: 8,
     },
-    addBtnText: {
-      fontSize: 14,
-      fontWeight: "800",
-    },
+    addBtnText: { fontSize: 14, fontWeight: "800" },
 
-    swipeHint: {
-      fontSize: 12,
-      fontWeight: "700",
-      marginBottom: 10,
-    },
+    swipeHint: { fontSize: 12, fontWeight: "700", marginBottom: 10 },
 
-    // red underlay full-width behind the card
     deleteUnderlay: {
       flex: 1,
       backgroundColor: "#E25563",
@@ -1109,82 +1242,24 @@ const makeStyles = (t: any) =>
       alignItems: "flex-end",
       paddingRight: 18,
     },
-    deleteUnderlayText: {
-      color: "#fff",
-      fontSize: 14,
-      fontWeight: "900",
-      letterSpacing: 0.2,
-    },
+    deleteUnderlayText: { color: "#fff", fontSize: 14, fontWeight: "900", letterSpacing: 0.2 },
 
-    subjectCard: {
-      borderWidth: 1,
-      borderRadius: 16,
-      padding: 14,
-      flexDirection: "row",
-      alignItems: "flex-start",
-      borderLeftWidth: 6,
-    },
-    completedCard: {
-      opacity: 0.88,
-    },
-    subjectTopRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 10,
-    },
-    subjectCode: {
-      color: t.text,
-      fontWeight: "800",
-      fontSize: 15,
-    },
-    subjectName: {
-      color: t.textMuted,
-      fontSize: 15,
-      fontWeight: "400",
-    },
-    metaText: {
-      fontSize: 12,
-      fontWeight: "600",
-    },
-    metaTiny: {
-      fontSize: 11,
-      fontWeight: "600",
-      opacity: 0.85,
-      marginTop: 2,
-    },
+    subjectCard: { borderWidth: 1, borderRadius: 16, padding: 14, flexDirection: "row", alignItems: "flex-start", borderLeftWidth: 6 },
+    completedCard: { opacity: 0.88 },
 
-    tagPill: {
-      paddingVertical: 6,
-      paddingHorizontal: 10,
-      borderRadius: 999,
-      borderWidth: 1,
-      maxWidth: 120,
-    },
-    tagText: {
-      fontSize: 11,
-      fontWeight: "900",
-      letterSpacing: 0.2,
-    },
+    subjectTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+    subjectCode: { color: t.text, fontWeight: "800", fontSize: 15 },
+    subjectName: { color: t.textMuted, fontSize: 15, fontWeight: "400" },
+    metaText: { fontSize: 12, fontWeight: "600" },
+    metaTiny: { fontSize: 11, fontWeight: "600", opacity: 0.85, marginTop: 2 },
 
-    subjectBottomRow: {
-      marginTop: 10,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 10,
-    },
-    periodText: {
-      flex: 1,
-      fontSize: 12,
-      fontWeight: "800",
-    },
-    actionsRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      marginLeft: 10,
-    },
+    tagPill: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 999, borderWidth: 1, maxWidth: 120 },
+    tagText: { fontSize: 11, fontWeight: "900", letterSpacing: 0.2 },
+
+    subjectBottomRow: { marginTop: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+    periodText: { flex: 1, fontSize: 12, fontWeight: "800" },
+
+    actionsRow: { flexDirection: "row", alignItems: "center", gap: 8, marginLeft: 10 },
     actionIconBtn: {
       width: 34,
       height: 34,
@@ -1196,25 +1271,10 @@ const makeStyles = (t: any) =>
       backgroundColor: t.bg,
     },
 
-    completedHeaderWrap: {
-      marginTop: 10,
-      marginBottom: 10,
-      paddingTop: 6,
-      paddingBottom: 6,
-    },
-    completedHeaderText: {
-      fontSize: 12,
-      fontWeight: "800",
-      letterSpacing: 0.3,
-      textTransform: "uppercase",
-      marginBottom: 8,
-    },
-    completedDivider: {
-      height: 1,
-      opacity: 0.8,
-    },
+    completedHeaderWrap: { marginTop: 10, marginBottom: 10, paddingTop: 6, paddingBottom: 6 },
+    completedHeaderText: { fontSize: 12, fontWeight: "800", letterSpacing: 0.3, textTransform: "uppercase", marginBottom: 8 },
+    completedDivider: { height: 1, opacity: 0.8 },
 
-    /* Modal */
     modalOverlay: {
       position: "absolute",
       top: 0,
@@ -1232,16 +1292,9 @@ const makeStyles = (t: any) =>
       padding: 16,
       borderWidth: 1,
       maxWidth: 520,
+      maxHeight: "97%",
     },
-    modalTitle: {
-      fontSize: 18,
-      fontWeight: "900",
-    },
-    modalSub: {
-      marginTop: 2,
-      fontSize: 12,
-      fontWeight: "700",
-    },
+    modalTitle: { fontSize: 18, fontWeight: "900" },
 
     inputCompact: {
       minHeight: 48,
@@ -1255,89 +1308,27 @@ const makeStyles = (t: any) =>
       fontSize: 14,
     },
 
-    smallLabel: {
-      fontSize: 12,
-      fontWeight: "800",
-      marginBottom: 6,
-    },
-    microLabel: {
-      fontSize: 11,
-      fontWeight: "800",
-      marginBottom: 6,
-    },
+    smallLabel: { fontSize: 12, fontWeight: "800", marginBottom: 6 },
+    microLabel: { fontSize: 11, fontWeight: "800", marginBottom: 6 },
 
-    inlineRow: {
-      flexDirection: "row",
-      gap: 10,
-      alignItems: "flex-start",
-      marginTop: 6,
-    },
+    inlineRow: { flexDirection: "row", gap: 10, alignItems: "flex-start", marginTop: 6 },
 
-    chipsRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-    },
-    chip: {
-      paddingVertical: 8,
-      paddingHorizontal: 10,
-      borderRadius: 999,
-      borderWidth: 1,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    chipText: {
-      fontSize: 12,
-      fontWeight: "900",
-    },
+    chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    chip: { paddingVertical: 8, paddingHorizontal: 10, borderRadius: 999, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+    chipText: { fontSize: 12, fontWeight: "900" },
 
-    numRow: {
-      flexDirection: "row",
-      gap: 8,
-      flexWrap: "wrap",
-    },
-    numChip: {
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-      borderRadius: 12,
-      borderWidth: 1,
-      minWidth: 44,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    numChipText: {
-      fontSize: 12,
-      fontWeight: "900",
-    },
+    numRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+    numChip: { paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, minWidth: 44, alignItems: "center", justifyContent: "center" },
+    numChipText: { fontSize: 12, fontWeight: "900" },
 
-    togglePill: {
-      borderWidth: 1,
-      borderRadius: 999,
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-      alignSelf: "flex-start",
-    },
+    togglePill: { borderWidth: 1, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 12, alignSelf: "flex-start" },
     toggleText: { fontSize: 12, fontWeight: "900" },
     helperText: { marginTop: 6, fontSize: 12, lineHeight: 16 },
 
-    modalButtonsRow: {
-      flexDirection: "row",
-      gap: 10,
-      marginTop: 16,
-    },
-    modalBtn: {
-      flex: 1,
-      paddingVertical: 12,
-      borderRadius: 16,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    modalBtnText: {
-      fontSize: 14,
-      fontWeight: "900",
-    },
+    modalButtonsRow: { flexDirection: "row", gap: 10, marginTop: 16 },
+    modalBtn: { flex: 1, paddingVertical: 12, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+    modalBtnText: { fontSize: 14, fontWeight: "900" },
 
-    /* Tutorial */
     tutorialOverlay: {
       position: "absolute",
       top: 0,
@@ -1349,40 +1340,12 @@ const makeStyles = (t: any) =>
       alignItems: "center",
       padding: 24,
     },
-    tutorialCard: {
-      width: "100%",
-      borderRadius: 20,
-      paddingVertical: 20,
-      paddingHorizontal: 18,
-      borderWidth: 1,
-      alignItems: "center",
-      maxWidth: 520,
-    },
-    tutorialTitle: {
-      fontSize: 18,
-      fontWeight: "800",
-      marginBottom: 8,
-      textAlign: "center",
-    },
-    tutorialBody: {
-      fontSize: 14,
-      textAlign: "left",
-      lineHeight: 20,
-      marginBottom: 16,
-    },
-    tutorialPrimaryBtn: {
-      width: "100%",
-      paddingVertical: 12,
-      borderRadius: 16,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    tutorialPrimaryText: {
-      fontSize: 15,
-      fontWeight: "900",
-    },
+    tutorialCard: { width: "100%", borderRadius: 20, paddingVertical: 20, paddingHorizontal: 18, borderWidth: 1, alignItems: "center", maxWidth: 520 },
+    tutorialTitle: { fontSize: 18, fontWeight: "800", marginBottom: 8, textAlign: "center" },
+    tutorialBody: { fontSize: 14, textAlign: "left", lineHeight: 20, marginBottom: 16 },
+    tutorialPrimaryBtn: { width: "100%", paddingVertical: 12, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+    tutorialPrimaryText: { fontSize: 15, fontWeight: "900" },
 
-    /* Feedback modal */
     feedbackOverlay: {
       position: "absolute",
       top: 0,
@@ -1394,65 +1357,13 @@ const makeStyles = (t: any) =>
       alignItems: "center",
       padding: 24,
     },
-    feedbackCard: {
-      width: "100%",
-      borderRadius: 22,
-      padding: 18,
-      alignItems: "center",
-      borderWidth: 1,
-      maxWidth: 520,
-    },
-    feedbackTitle: {
-      fontSize: 20,
-      fontWeight: "900",
-      marginBottom: 6,
-    },
-    starsRow: {
-      flexDirection: "row",
-      gap: 4,
-      marginVertical: 6,
-    },
-    star: {
-      fontSize: 26,
-      color: "#FFD43B",
-    },
-    feedbackSubtitle: {
-      fontSize: 13,
-      textAlign: "center",
-      marginBottom: 16,
-      lineHeight: 18,
-    },
-    reviewButton: {
-      width: "100%",
-      paddingVertical: 14,
-      borderRadius: 16,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    reviewButtonText: {
-      fontSize: 16,
-      fontWeight: "900",
-    },
-    maybeLaterWrapper: {
-      marginTop: 10,
-      paddingVertical: 6,
-    },
-    maybeLaterText: {
-      fontSize: 13,
-      fontWeight: "700",
-    },
-    cardTapCatcher: {
-      ...StyleSheet.absoluteFillObject,
-      zIndex: 0,
-    },
-
-    cardContent: {
-      zIndex: 1,
-    },
-    keyboardDismissSpacer: {
-      height: 1, // small “blank” area to tap
-    },
-
-
-
+    feedbackCard: { width: "100%", borderRadius: 22, padding: 18, alignItems: "center", borderWidth: 1, maxWidth: 520 },
+    feedbackTitle: { fontSize: 20, fontWeight: "900", marginBottom: 6 },
+    starsRow: { flexDirection: "row", gap: 4, marginVertical: 6 },
+    star: { fontSize: 26, color: "#FFD43B" },
+    feedbackSubtitle: { fontSize: 13, textAlign: "center", marginBottom: 16, lineHeight: 18 },
+    reviewButton: { width: "100%", paddingVertical: 14, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+    reviewButtonText: { fontSize: 16, fontWeight: "900" },
+    maybeLaterWrapper: { marginTop: 10, paddingVertical: 6 },
+    maybeLaterText: { fontSize: 13, fontWeight: "700" },
   });
