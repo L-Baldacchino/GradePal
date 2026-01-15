@@ -2,6 +2,20 @@
 
 Last updated: 02 January 2026  
 Developer: Luke Baldacchino / Tera Apps  
+
+____________________________________________________________
+
+V 1.1.1 – Minor updates
+
+Minor UX updates
+
+- Home page
+  - Completed subjects now show in decending order (Recently completed first)
+  - When adding a subject, you can click into blank space to drop the keyboard
+
+- Subject page
+  - Assignment cards can now be collapsed
+  - Collapsed cards show pertinent information
 ____________________________________________________________
 
 V 1.1.0 – Minor updates
