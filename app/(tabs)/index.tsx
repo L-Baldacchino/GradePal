@@ -476,17 +476,28 @@ export default function SubjectsScreen() {
     const active = subjects.filter((s) => !isCompletedSubject(s));
     const completed = subjects.filter((s) => isCompletedSubject(s));
 
+    // If user has manually reordered, preserve their ordering.
     if (anyManual) return { activeList: active, completedList: completed };
 
-    const sortFn = (a: Subject, b: Subject) => {
+    // Active: ascending (earliest -> latest), missing commencement goes to bottom.
+    const sortActive = (a: Subject, b: Subject) => {
       const ak = periodToSortableKey(a.commencement);
       const bk = periodToSortableKey(b.commencement);
       if (ak !== bk) return ak - bk;
       return a.code.localeCompare(b.code);
     };
 
-    active.sort(sortFn);
-    completed.sort(sortFn);
+    // Completed: descending (latest -> earliest), missing commencement goes to bottom.
+    const sortCompleted = (a: Subject, b: Subject) => {
+      const ak = a.commencement ? periodToSortableKey(a.commencement) : -1;
+      const bk = b.commencement ? periodToSortableKey(b.commencement) : -1;
+
+      if (ak !== bk) return bk - ak; // ✅ descending
+      return a.code.localeCompare(b.code);
+    };
+
+    active.sort(sortActive);
+    completed.sort(sortCompleted);
 
     return { activeList: active, completedList: completed };
   }, [subjects, anyManual]);
