@@ -5,6 +5,14 @@ Developer: Luke Baldacchino / Tera Apps
 
 ____________________________________________________________
 
+V 1.1.2 – Minor bug fix
+
+Minor UX updates
+
+- Bug fix
+  - Fixed the add/edit subject modal, as it was collapsing when user input was detected.
+____________________________________________________________
+
 V 1.1.1 – Minor updates
 
 Minor UX updates
