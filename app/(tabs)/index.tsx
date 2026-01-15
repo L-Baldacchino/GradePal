@@ -1450,7 +1450,7 @@ const makeStyles = (t: any) =>
       zIndex: 1,
     },
     keyboardDismissSpacer: {
-      height: 18, // small “blank” area to tap
+      height: 1, // small “blank” area to tap
     },
 
 
