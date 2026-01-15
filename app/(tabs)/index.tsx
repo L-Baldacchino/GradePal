@@ -789,8 +789,8 @@ export default function SubjectsScreen() {
 
               <ScrollView
                 keyboardShouldPersistTaps="handled"
-                contentContainerStyle={{ paddingBottom: 12 }}
                 showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 12, flexGrow: 1 }}
               >
                 {/* Tap blank space inside content dismisses keyboard */}
                 <Pressable style={{ height: 6 }} onPress={() => Keyboard.dismiss()} />
@@ -983,7 +983,11 @@ export default function SubjectsScreen() {
                 Edit {editing?.code ?? ""}
               </Text>
 
-              <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 12 }} showsVerticalScrollIndicator={false}>
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 12, flexGrow: 1 }}
+              >
                 <Pressable style={{ height: 6 }} onPress={() => Keyboard.dismiss()} />
 
                 <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 10 }]}>Subject name</Text>
@@ -1285,6 +1289,8 @@ const makeStyles = (t: any) =>
       alignItems: "center",
       padding: 22,
       justifyContent: Platform.OS === "android" ? "flex-end" : "center",
+      paddingBottom: Platform.OS === "android" ? 20 : 22,
+      paddingTop: Platform.OS === "android" ? 20 : 22,
     },
     modalCard: {
       width: "100%",

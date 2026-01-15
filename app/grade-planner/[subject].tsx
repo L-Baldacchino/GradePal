@@ -354,8 +354,8 @@ function InlineClearInput({
   );
 }
 
-function isAssignmentOrExam(a: Assessment) {
-  return a.type === "Assignment" || a.type === "Exam";
+function supportsCollapse(a: Assessment) {
+  return a.type === "Assignment" || a.type === "Exam"  || a.type === "Quiz";
 }
 
 function hasGrade(a: Assessment) {
@@ -468,7 +468,7 @@ export default function SubjectPlannerScreen() {
         const next = { ...prev };
 
         for (const it of items) {
-          if (!isAssignmentOrExam(it)) continue;
+          if (!supportsCollapse(it)) continue;
 
           // Only collapse once the grade is a valid number 0–100
           if (!hasValidNumericGrade(it)) continue;
@@ -1115,7 +1115,8 @@ function AssessmentRow({
 
   const dueDisplay = isoToDisplay(item.dueDateISO);
 
-  const isAE = isAssignmentOrExam(item);
+  const canCollapse = supportsCollapse(item);
+
 
   // Swipe: full-width red underlay + instant delete on swipe open
   const renderRightActions = () => (
@@ -1181,7 +1182,7 @@ function AssessmentRow({
             />
 
             {/* Collapse toggle */}
-            {isAE && (
+            {canCollapse && (
               <Pressable onPress={onToggleCollapsed} hitSlop={10} style={s.collapseBtn}>
                 <Ionicons name={collapsed ? "chevron-down-outline" : "chevron-up-outline"} size={18} color={theme.textMuted} />
               </Pressable>
@@ -1193,7 +1194,7 @@ function AssessmentRow({
           </View>
 
           {/* If Assignment/Exam AND collapsed -> show summary only */}
-          {isAE && collapsed ? (
+          {canCollapse && collapsed ? (
             Summary
           ) : (
             <>
@@ -1718,23 +1719,23 @@ const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
     summaryLineText: { fontSize: 13, fontWeight: "700" },
 
     centerOverlay: {
-  flex: 1,
-  backgroundColor: "rgba(0,0,0,0.6)",
-  justifyContent: "center",
-  alignItems: "center",
-  padding: 22,
-},
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.6)",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 22,
+    },
 
-centerCard: {
-  width: "100%",
-  maxWidth: 520,
-  maxHeight: "88%",
-  backgroundColor: t.bg,
-  borderColor: t.border,
-  borderWidth: 1,
-  borderRadius: 22,
-  padding: 16,
-},
+    centerCard: {
+      width: "100%",
+      maxWidth: 520,
+      maxHeight: "88%",
+      backgroundColor: t.bg,
+      borderColor: t.border,
+      borderWidth: 1,
+      borderRadius: 22,
+      padding: 16,
+    },
 
 
   });
