@@ -16,6 +16,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import DraggableFlatList, { RenderItemParams } from "react-native-draggable-flatlist";
@@ -132,7 +133,8 @@ function safeParseSubjects(raw: string | null): Subject[] {
 
 function subjectCountsTowardWAM(s: Subject): number | undefined {
   if (typeof s.finalMark === "number" && Number.isFinite(s.finalMark)) return s.finalMark;
-  if (s.isExempt && typeof s.exemptFinalMark === "number" && Number.isFinite(s.exemptFinalMark)) return s.exemptFinalMark;
+  if (s.isExempt && typeof s.exemptFinalMark === "number" && Number.isFinite(s.exemptFinalMark))
+    return s.exemptFinalMark;
   return undefined;
 }
 
@@ -328,12 +330,9 @@ const SubjectRow: React.FC<SubjectRowProps> = ({
               </Text>
 
               <View style={styles.actionsRow}>
-                {/* Edit button restored */}
                 <Pressable onPress={() => onEdit(item)} style={styles.actionIconBtn} hitSlop={10}>
                   <Ionicons name="create-outline" size={18} color={theme.textMuted} />
                 </Pressable>
-
-                {/* Trash removed */}
 
                 {canDrag ? (
                   <Pressable onLongPress={drag} delayLongPress={140} style={styles.actionIconBtn} hitSlop={10}>
@@ -782,324 +781,188 @@ export default function SubjectsScreen() {
 
       {/* ADD MODAL */}
       <Modal visible={addOpen} transparent animationType="fade" onRequestClose={closeAddModal}>
-        <Pressable style={s.modalOverlay} onPress={closeAddModal}>
-          <Pressable style={[s.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={() => {}}>
-            <Text style={[s.modalTitle, { color: theme.text }]}>Add subject</Text>
+        <View style={s.modalOverlay}>
+          {/* Tap outside the card closes modal */}
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeAddModal} />
 
-            <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 10 }]}>Subject code</Text>
-            <TextInput
-              value={code}
-              onChangeText={(t) => setCode(t.toUpperCase())}
-              placeholder="e.g. CSE3MAD"
-              placeholderTextColor={theme.textMuted}
-              style={s.inputCompact}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              returnKeyType="next"
-            />
+          {/* Card: tap blank space inside dismisses keyboard */}
+          <Pressable
+            style={[s.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}
+            onPress={() => Keyboard.dismiss()}
+          >
+            {/* IMPORTANT: stop taps on controls from triggering the card onPress */}
+            <View pointerEvents="box-none">
+              <Text style={[s.modalTitle, { color: theme.text }]}>Add subject</Text>
 
-            <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 10 }]}>Subject name</Text>
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="e.g. Mobile App Development"
-              placeholderTextColor={theme.textMuted}
-              style={s.inputCompact}
-              autoCapitalize="words"
-              autoCorrect={false}
-              returnKeyType="done"
-            />
+              <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 10 }]}>Subject code</Text>
+              <TextInput
+                value={code}
+                onChangeText={(t) => setCode(t.toUpperCase())}
+                placeholder="e.g. CSE3MAD"
+                placeholderTextColor={theme.textMuted}
+                style={s.inputCompact}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                returnKeyType="next"
+              />
 
-            <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 12 }]}>Commencement period</Text>
+              <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 10 }]}>Subject name</Text>
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                placeholder="e.g. Mobile App Development"
+                placeholderTextColor={theme.textMuted}
+                style={s.inputCompact}
+                autoCapitalize="words"
+                autoCorrect={false}
+                returnKeyType="done"
+              />
 
-            <View style={s.inlineRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={[s.microLabel, { color: theme.textMuted }]}>Year</Text>
-                <TextInput
-                  value={year}
-                  onChangeText={(t) => setYear(t.replace(/[^0-9]/g, ""))}
-                  placeholder="2027"
-                  placeholderTextColor={theme.textMuted}
-                  keyboardType={Platform.OS === "ios" ? "number-pad" : "numeric"}
-                  inputMode="numeric"
-                  style={s.inputCompact}
-                />
+              <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 12 }]}>Commencement period</Text>
+
+              <View style={s.inlineRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.microLabel, { color: theme.textMuted }]}>Year</Text>
+                  <TextInput
+                    value={year}
+                    onChangeText={(t) => setYear(t.replace(/[^0-9]/g, ""))}
+                    placeholder="2027"
+                    placeholderTextColor={theme.textMuted}
+                    keyboardType={Platform.OS === "ios" ? "number-pad" : "numeric"}
+                    inputMode="numeric"
+                    style={s.inputCompact}
+                  />
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.microLabel, { color: theme.textMuted }]}>Number</Text>
+                  <View style={s.numRow}>
+                    {Array.from({ length: maxNumForType(periodType) }, (_, i) => i + 1).map((n) => {
+                      const active = periodNum === n;
+                      return (
+                        <Pressable
+                          key={n}
+                          onPress={() => setPeriodNum(n)}
+                          style={[s.numChip, { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card }]}
+                        >
+                          <Text style={[s.numChipText, { color: active ? theme.primary : theme.textMuted }]}>{n}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
               </View>
 
-              <View style={{ flex: 1 }}>
-                <Text style={[s.microLabel, { color: theme.textMuted }]}>Number</Text>
-                <View style={s.numRow}>
-                  {Array.from({ length: maxNumForType(periodType) }, (_, i) => i + 1).map((n) => {
-                    const active = periodNum === n;
+              <View style={{ marginTop: 10 }}>
+                <Text style={[s.microLabel, { color: theme.textMuted }]}>Type</Text>
+                <View style={s.chipsRow}>
+                  {(["Semester", "Trimester", "Term"] as PeriodType[]).map((pt) => {
+                    const active = periodType === pt;
                     return (
                       <Pressable
-                        key={n}
-                        onPress={() => setPeriodNum(n)}
-                        style={[s.numChip, { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card }]}
+                        key={pt}
+                        onPress={() => {
+                          setPeriodType(pt);
+                          const mx = maxNumForType(pt);
+                          setPeriodNum((prev) => Math.min(prev, mx));
+                        }}
+                        style={[s.chip, { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card }]}
                       >
-                        <Text style={[s.numChipText, { color: active ? theme.primary : theme.textMuted }]}>{n}</Text>
+                        <Text style={[s.chipText, { color: active ? theme.primary : theme.textMuted }]}>{pt}</Text>
                       </Pressable>
                     );
                   })}
                 </View>
-              </View>
-            </View>
 
-            <View style={{ marginTop: 10 }}>
-              <Text style={[s.microLabel, { color: theme.textMuted }]}>Type</Text>
+                <Text style={[s.helperText, { color: theme.textMuted }]}>Example: 2027 • Semester 1</Text>
+              </View>
+
+              <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 12 }]}>Tag</Text>
               <View style={s.chipsRow}>
-                {(["Semester", "Trimester", "Term"] as PeriodType[]).map((pt) => {
-                  const active = periodType === pt;
+                {([
+                  { key: "core", label: "Core" },
+                  { key: "major", label: "Major" },
+                  { key: "minor", label: "Minor" },
+                  { key: "elective", label: "Elective" },
+                  { key: "custom", label: "Custom" },
+                ] as { key: TagKey; label: string }[]).map((x) => {
+                  const active = tagKey === x.key;
+                  const tv = getTagVisual(x.key);
                   return (
                     <Pressable
-                      key={pt}
-                      onPress={() => {
-                        setPeriodType(pt);
-                        const mx = maxNumForType(pt);
-                        setPeriodNum((prev) => Math.min(prev, mx));
-                      }}
-                      style={[s.chip, { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card }]}
+                      key={x.key}
+                      onPress={() => setTagKey(x.key)}
+                      style={[s.chip, { borderColor: active ? tv.color : theme.border, backgroundColor: theme.card }]}
                     >
-                      <Text style={[s.chipText, { color: active ? theme.primary : theme.textMuted }]}>{pt}</Text>
+                      <Text style={[s.chipText, { color: active ? tv.color : theme.textMuted }]}>{x.label}</Text>
                     </Pressable>
                   );
                 })}
               </View>
 
-              <Text style={[s.helperText, { color: theme.textMuted }]}>Example: 2027 • Semester 1</Text>
-            </View>
+              {tagKey === "custom" && (
+                <TextInput
+                  value={customTag}
+                  onChangeText={setCustomTag}
+                  placeholder="Enter custom tag (e.g. Minor)"
+                  placeholderTextColor={theme.textMuted}
+                  style={[s.inputCompact, { marginTop: 10 }]}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                />
+              )}
 
-            <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 12 }]}>Tag</Text>
-            <View style={s.chipsRow}>
-              {([
-                { key: "core", label: "Core" },
-                { key: "major", label: "Major" },
-                { key: "minor", label: "Minor" },
-                { key: "elective", label: "Elective" },
-                { key: "custom", label: "Custom" },
-              ] as { key: TagKey; label: string }[]).map((x) => {
-                const active = tagKey === x.key;
-                const tv = getTagVisual(x.key);
-                return (
-                  <Pressable
-                    key={x.key}
-                    onPress={() => setTagKey(x.key)}
-                    style={[s.chip, { borderColor: active ? tv.color : theme.border, backgroundColor: theme.card }]}
-                  >
-                    <Text style={[s.chipText, { color: active ? tv.color : theme.textMuted }]}>{x.label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            {tagKey === "custom" && (
-              <TextInput
-                value={customTag}
-                onChangeText={setCustomTag}
-                placeholder="Enter custom tag (e.g. Minor)"
-                placeholderTextColor={theme.textMuted}
-                style={[s.inputCompact, { marginTop: 10 }]}
-                autoCapitalize="words"
-                autoCorrect={false}
-              />
-            )}
-
-            <View style={{ marginTop: 14 }}>
-              <Pressable
-                onPress={() => {
-                  setIsExempt((p) => !p);
-                  if (isExempt) setExemptGrade("");
-                }}
-                style={[s.togglePill, { borderColor: isExempt ? theme.primary : theme.border, backgroundColor: theme.card }]}
-              >
-                <Text style={[s.toggleText, { color: isExempt ? theme.primary : theme.textMuted }]}>
-                  {isExempt ? "Exempt subject ✓" : "Exempt subject"}
-                </Text>
-              </Pressable>
-
-              {isExempt && (
-                <View style={{ marginTop: 10 }}>
-                  <Text style={[s.microLabel, { color: theme.textMuted }]}>Exempt grade (optional)</Text>
-                  <TextInput
-                    value={exemptGrade}
-                    onChangeText={(t) => setExemptGrade(t.replace(/[^0-9.]/g, ""))}
-                    placeholder="e.g. 75"
-                    placeholderTextColor={theme.textMuted}
-                    keyboardType={Platform.OS === "ios" ? "decimal-pad" : "number-pad"}
-                    inputMode="decimal"
-                    style={s.inputCompact}
-                  />
-                  <Text style={[s.helperText, { color: theme.textMuted }]}>
-                    Leave blank if no grade was awarded (it won’t count toward WAM).
+              <View style={{ marginTop: 14 }}>
+                <Pressable
+                  onPress={() => {
+                    setIsExempt((p) => !p);
+                    if (isExempt) setExemptGrade("");
+                  }}
+                  style={[s.togglePill, { borderColor: isExempt ? theme.primary : theme.border, backgroundColor: theme.card }]}
+                >
+                  <Text style={[s.toggleText, { color: isExempt ? theme.primary : theme.textMuted }]}>
+                    {isExempt ? "Exempt subject ✓" : "Exempt subject"}
                   </Text>
-                </View>
-              )}
-            </View>
+                </Pressable>
 
-            <View style={s.modalButtonsRow}>
-              <Pressable onPress={closeAddModal} style={[s.modalBtn, { backgroundColor: theme.border }]}>
-                <Text style={[s.modalBtnText, { color: theme.text }]}>Cancel</Text>
-              </Pressable>
+                {isExempt && (
+                  <View style={{ marginTop: 10 }}>
+                    <Text style={[s.microLabel, { color: theme.textMuted }]}>Exempt grade (optional)</Text>
+                    <TextInput
+                      value={exemptGrade}
+                      onChangeText={(t) => setExemptGrade(t.replace(/[^0-9.]/g, ""))}
+                      placeholder="e.g. 75"
+                      placeholderTextColor={theme.textMuted}
+                      keyboardType={Platform.OS === "ios" ? "decimal-pad" : "number-pad"}
+                      inputMode="decimal"
+                      style={s.inputCompact}
+                    />
+                    <Text style={[s.helperText, { color: theme.textMuted }]}>
+                      Leave blank if no grade was awarded (it won’t count toward WAM).
+                    </Text>
+                  </View>
+                )}
+              </View>
 
-              <Pressable onPress={addSubject} style={[s.modalBtn, { backgroundColor: theme.primary }]}>
-                <Text style={[s.modalBtnText, { color: theme.primaryText }]}>Add</Text>
-              </Pressable>
+            
+              <Pressable onPress={() => Keyboard.dismiss()} style={s.keyboardDismissSpacer} />
+
+              <View style={s.modalButtonsRow}>
+                <Pressable onPress={closeAddModal} style={[s.modalBtn, { backgroundColor: theme.border }]}>
+                  <Text style={[s.modalBtnText, { color: theme.text }]}>Cancel</Text>
+                </Pressable>
+
+                <Pressable onPress={addSubject} style={[s.modalBtn, { backgroundColor: theme.primary }]}>
+                  <Text style={[s.modalBtnText, { color: theme.primaryText }]}>Add</Text>
+                </Pressable>
+              </View>
             </View>
           </Pressable>
-        </Pressable>
+        </View>
       </Modal>
 
-      {/* EDIT MODAL */}
-      <Modal visible={editOpen} transparent animationType="fade" onRequestClose={closeEditModal}>
-        <Pressable style={s.modalOverlay} onPress={closeEditModal}>
-          <Pressable style={[s.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={() => {}}>
-            <Text style={[s.modalTitle, { color: theme.text }]}>Edit subject</Text>
-            <Text style={[s.modalSub, { color: theme.textMuted }]}>{editing?.code}</Text>
 
-            <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 10 }]}>Name</Text>
-            <TextInput
-              value={editName}
-              onChangeText={setEditName}
-              placeholder="Subject name"
-              placeholderTextColor={theme.textMuted}
-              style={s.inputCompact}
-              autoCapitalize="words"
-              autoCorrect={false}
-            />
-
-            <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 12 }]}>Commencement period</Text>
-
-            <View style={s.inlineRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={[s.microLabel, { color: theme.textMuted }]}>Year</Text>
-                <TextInput
-                  value={editYear}
-                  onChangeText={(t) => setEditYear(t.replace(/[^0-9]/g, ""))}
-                  placeholder="2027"
-                  placeholderTextColor={theme.textMuted}
-                  keyboardType={Platform.OS === "ios" ? "number-pad" : "numeric"}
-                  inputMode="numeric"
-                  style={s.inputCompact}
-                />
-              </View>
-
-              <View style={{ flex: 1 }}>
-                <Text style={[s.microLabel, { color: theme.textMuted }]}>Number</Text>
-                <View style={s.numRow}>
-                  {Array.from({ length: maxNumForType(editPeriodType) }, (_, i) => i + 1).map((n) => {
-                    const active = editPeriodNum === n;
-                    return (
-                      <Pressable
-                        key={n}
-                        onPress={() => setEditPeriodNum(n)}
-                        style={[s.numChip, { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card }]}
-                      >
-                        <Text style={[s.numChipText, { color: active ? theme.primary : theme.textMuted }]}>{n}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-            </View>
-
-            <View style={{ marginTop: 10 }}>
-              <Text style={[s.microLabel, { color: theme.textMuted }]}>Type</Text>
-              <View style={s.chipsRow}>
-                {(["Semester", "Trimester", "Term"] as PeriodType[]).map((pt) => {
-                  const active = editPeriodType === pt;
-                  return (
-                    <Pressable
-                      key={pt}
-                      onPress={() => {
-                        setEditPeriodType(pt);
-                        const mx = maxNumForType(pt);
-                        setEditPeriodNum((prev) => Math.min(prev, mx));
-                      }}
-                      style={[s.chip, { borderColor: active ? theme.primary : theme.border, backgroundColor: theme.card }]}
-                    >
-                      <Text style={[s.chipText, { color: active ? theme.primary : theme.textMuted }]}>{pt}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-
-            <Text style={[s.smallLabel, { color: theme.textMuted, marginTop: 12 }]}>Tag</Text>
-            <View style={s.chipsRow}>
-              {([
-                { key: "core", label: "Core" },
-                { key: "major", label: "Major" },
-                { key: "minor", label: "Minor" },
-                { key: "elective", label: "Elective" },
-                { key: "custom", label: "Custom" },
-              ] as { key: TagKey; label: string }[]).map((x) => {
-                const active = editTagKey === x.key;
-                const tv = getTagVisual(x.key);
-                return (
-                  <Pressable
-                    key={x.key}
-                    onPress={() => setEditTagKey(x.key)}
-                    style={[s.chip, { borderColor: active ? tv.color : theme.border, backgroundColor: theme.card }]}
-                  >
-                    <Text style={[s.chipText, { color: active ? tv.color : theme.textMuted }]}>{x.label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            {editTagKey === "custom" && (
-              <TextInput
-                value={editCustomTag}
-                onChangeText={setEditCustomTag}
-                placeholder="Enter custom tag"
-                placeholderTextColor={theme.textMuted}
-                style={[s.inputCompact, { marginTop: 10 }]}
-                autoCapitalize="words"
-                autoCorrect={false}
-              />
-            )}
-
-            <View style={{ marginTop: 14 }}>
-              <Pressable
-                onPress={() => {
-                  setEditIsExempt((p) => !p);
-                  if (editIsExempt) setEditExemptGrade("");
-                }}
-                style={[s.togglePill, { borderColor: editIsExempt ? theme.primary : theme.border, backgroundColor: theme.card }]}
-              >
-                <Text style={[s.toggleText, { color: editIsExempt ? theme.primary : theme.textMuted }]}>
-                  {editIsExempt ? "Exempt subject ✓" : "Exempt subject"}
-                </Text>
-              </Pressable>
-
-              {editIsExempt && (
-                <View style={{ marginTop: 10 }}>
-                  <Text style={[s.microLabel, { color: theme.textMuted }]}>Exempt grade (optional)</Text>
-                  <TextInput
-                    value={editExemptGrade}
-                    onChangeText={(t) => setEditExemptGrade(t.replace(/[^0-9.]/g, ""))}
-                    placeholder="e.g. 75"
-                    placeholderTextColor={theme.textMuted}
-                    keyboardType={Platform.OS === "ios" ? "decimal-pad" : "number-pad"}
-                    inputMode="decimal"
-                    style={s.inputCompact}
-                  />
-                </View>
-              )}
-            </View>
-
-            <View style={s.modalButtonsRow}>
-              <Pressable onPress={closeEditModal} style={[s.modalBtn, { backgroundColor: theme.border }]}>
-                <Text style={[s.modalBtnText, { color: theme.text }]}>Cancel</Text>
-              </Pressable>
-
-              <Pressable onPress={saveEditModal} style={[s.modalBtn, { backgroundColor: theme.primary }]}>
-                <Text style={[s.modalBtnText, { color: theme.primaryText }]}>Save</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      
 
       {/* Tutorial overlay */}
       {showTutorial && (
@@ -1578,4 +1441,18 @@ const makeStyles = (t: any) =>
       fontSize: 13,
       fontWeight: "700",
     },
+    cardTapCatcher: {
+      ...StyleSheet.absoluteFillObject,
+      zIndex: 0,
+    },
+
+    cardContent: {
+      zIndex: 1,
+    },
+    keyboardDismissSpacer: {
+      height: 18, // small “blank” area to tap
+    },
+
+
+
   });
