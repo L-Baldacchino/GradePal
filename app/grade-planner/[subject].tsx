@@ -172,9 +172,7 @@ function DatePickerModal({
             backgroundColor: theme.card,
           }}
         >
-          <Text style={{ color: theme.text, fontWeight: "900", fontSize: 16, marginBottom: 10 }}>
-            Select date
-          </Text>
+          <Text style={{ color: theme.text, fontWeight: "900", fontSize: 16, marginBottom: 10 }}>Select date</Text>
 
           <DateTimePicker
             value={temp}
@@ -349,17 +347,28 @@ function InlineClearInput({
         style={[s.input, s.inputWithIcon, inputStyle]}
       />
 
-      <Pressable
-        onPress={onClear}
-        disabled={!clearEnabled}
-        hitSlop={10}
-        style={[s.inlineTrash, { opacity: clearEnabled ? 1 : 0.25 }]}
-      >
+      <Pressable onPress={onClear} disabled={!clearEnabled} hitSlop={10} style={[s.inlineTrash, { opacity: clearEnabled ? 1 : 0.25 }]}>
         <Ionicons name="trash-outline" size={iconSize} color={theme.textMuted} />
       </Pressable>
     </View>
   );
 }
+
+function isAssignmentOrExam(a: Assessment) {
+  return a.type === "Assignment" || a.type === "Exam";
+}
+
+function hasGrade(a: Assessment) {
+  return (a.grade ?? "").trim() !== "";
+}
+
+function hasValidNumericGrade(a: Assessment) {
+  const raw = (a.grade ?? "").trim();
+  if (!raw) return false;
+  const n = toNum(raw);
+  return Number.isFinite(n) && !Number.isNaN(n) && n >= 0 && n <= 100;
+}
+
 
 // -------------------------------
 // Main component
@@ -374,6 +383,7 @@ export default function SubjectPlannerScreen() {
 
   const code = decodeURIComponent(subject ?? "").toUpperCase();
   const STORAGE_KEY = `grade-planner:${code}`;
+  const UI_KEY = `grade-planner-ui:${code}:v1`;
 
   const [items, setItems] = useState<Assessment[]>(seed);
   const [targetPass, setTargetPass] = useState<number>(50);
@@ -385,6 +395,9 @@ export default function SubjectPlannerScreen() {
 
   const [showAdd, setShowAdd] = useState(false);
   const [footerH, setFooterH] = useState(72);
+
+  // NEW: collapsed state per item id
+  const [collapsedById, setCollapsedById] = useState<Record<string, boolean>>({});
 
   useLayoutEffect(() => {
     nav.setOptions({
@@ -413,6 +426,21 @@ export default function SubjectPlannerScreen() {
     })();
   }, [STORAGE_KEY]);
 
+  // Load UI prefs (collapsed map)
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(UI_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        if (parsed && typeof parsed === "object" && parsed.collapsedById && typeof parsed.collapsedById === "object") {
+          setCollapsedById(parsed.collapsedById);
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }, [UI_KEY]);
+
   // Persist + Sync to timeline
   useEffect(() => {
     AsyncStorage.setItem(
@@ -427,6 +455,34 @@ export default function SubjectPlannerScreen() {
 
     if (code) syncPlannerToTimeline(code, items);
   }, [items, targetPass, finalSubjectGrade, autoCalcExamFromFinal, STORAGE_KEY, code]);
+
+  // Persist UI prefs
+  useEffect(() => {
+    AsyncStorage.setItem(UI_KEY, JSON.stringify({ collapsedById })).catch(() => {});
+  }, [collapsedById, UI_KEY]);
+
+  // Auto-collapse only when a valid numeric grade exists (prevents collapsing while typing)
+    useEffect(() => {
+      setCollapsedById((prev) => {
+        let changed = false;
+        const next = { ...prev };
+
+        for (const it of items) {
+          if (!isAssignmentOrExam(it)) continue;
+
+          // Only collapse once the grade is a valid number 0–100
+          if (!hasValidNumericGrade(it)) continue;
+
+          // Only set if user has never manually toggled this one
+          if (typeof next[it.id] === "boolean") continue;
+
+          next[it.id] = true;
+          changed = true;
+        }
+
+    return changed ? next : prev;
+  });
+}, [items]);
 
   // -------------------------------
   // Stats + hurdle + exam solve
@@ -456,8 +512,8 @@ export default function SubjectPlannerScreen() {
       const w = clamp(toNum(i.weight));
       totalWeight += w;
 
-      const hasGrade = i.grade !== undefined && i.grade !== "";
-      if (hasGrade) {
+      const hasG = i.grade !== undefined && i.grade !== "";
+      if (hasG) {
         const g = clamp(toNum(i.grade));
         completedWeight += w;
         contributions += (w * g) / 100;
@@ -498,8 +554,8 @@ export default function SubjectPlannerScreen() {
       if (i.type === "Exam") continue;
       const w = clamp(toNum(i.weight), 0, 100);
 
-      const hasGrade = i.grade !== undefined && i.grade !== "";
-      if (hasGrade) {
+      const hasG = i.grade !== undefined && i.grade !== "";
+      if (hasG) {
         const g = clamp(toNum(i.grade), 0, 100);
         otherContribution += (w * g) / 100;
       } else if (w > 0) {
@@ -554,6 +610,12 @@ export default function SubjectPlannerScreen() {
 
   function removeItem(id: string) {
     setItems((prev) => prev.filter((it) => it.id !== id));
+    setCollapsedById((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   }
 
   function clearItemGrade(id: string) {
@@ -571,6 +633,11 @@ export default function SubjectPlannerScreen() {
   function handleReorder(data: Assessment[]) {
     setItems(data);
   }
+
+  function toggleCollapsed(id: string) {
+    setCollapsedById((prev) => ({ ...prev, [id]: !prev[id] }));
+  }
+
 
   function toggleAutoCalc() {
     if (autoCalcExamFromFinal) {
@@ -664,6 +731,7 @@ export default function SubjectPlannerScreen() {
               await AsyncStorage.setItem(SUBJECTS_LIST_KEY, JSON.stringify(updated));
             }
             await AsyncStorage.removeItem(STORAGE_KEY);
+            await AsyncStorage.removeItem(UI_KEY);
             // @ts-ignore
             nav.goBack();
           } catch {
@@ -726,7 +794,9 @@ export default function SubjectPlannerScreen() {
       removeItem={removeItem}
       clearItemGrade={clearItemGrade}
       clearItemDueDate={clearItemDueDate}
-    />
+      collapsed={!!collapsedById[item.id]}
+      onToggleCollapsed={() => toggleCollapsed(item.id)}
+/>
   );
 
   const officialFinalDisplay = finalGradeNumeric != null ? finalGradeNumeric.toFixed(1) : sumContribution.toFixed(1);
@@ -875,15 +945,13 @@ export default function SubjectPlannerScreen() {
                 <View style={{ marginTop: 8 }}>
                   <Text style={s.passText}>⚠️ One or more hurdle tasks are currently below 50%.</Text>
                   <Text style={s.passText}>
-                    Even if your overall mark reaches {Math.round(targetPass)}%, failing a hurdle usually means you
-                    cannot pass the subject.
+                    Even if your overall mark reaches {Math.round(targetPass)}%, failing a hurdle usually means you cannot pass the subject.
                   </Text>
                 </View>
               ) : impossibleToPassByMarks ? (
                 <View style={{ marginTop: 8 }}>
                   <Text style={s.passText}>
-                    Even with 100% in the remaining {remainingWeight.toFixed(1)}%, your final mark would only reach about{" "}
-                    {finalMax.toFixed(1)}%.
+                    Even with 100% in the remaining {remainingWeight.toFixed(1)}%, your final mark would only reach about {finalMax.toFixed(1)}%.
                   </Text>
                   <Text style={s.passText}>That’s below the {Math.round(targetPass)}% pass mark.</Text>
                 </View>
@@ -894,9 +962,7 @@ export default function SubjectPlannerScreen() {
                 </View>
               ) : alreadyPassed ? (
                 <View style={{ marginTop: 8 }}>
-                  <Text style={s.passText}>
-                    🎉 Based on your current results, you’ve already reached the {Math.round(targetPass)}% pass mark.
-                  </Text>
+                  <Text style={s.passText}>🎉 Based on your current results, you’ve already reached the {Math.round(targetPass)}% pass mark.</Text>
                 </View>
               ) : (
                 <View style={{ marginTop: 8 }}>
@@ -927,18 +993,14 @@ export default function SubjectPlannerScreen() {
                     To solve the exam from your final grade, add grades for all non-exam items with weight &gt; 0.
                   </Text>
                 ) : requiredExamToHitFinal == null ? (
-                  <Text style={[s.passText, { marginTop: 6 }]}>
-                    Ensure you have an Exam item (Type = Exam) and it has a weight &gt; 0.
-                  </Text>
+                  <Text style={[s.passText, { marginTop: 6 }]}>Ensure you have an Exam item (Type = Exam) and it has a weight &gt; 0.</Text>
                 ) : (
                   <View style={{ marginTop: 6 }}>
                     <Text style={s.passText}>
-                      Non-exam contribution so far:{" "}
-                      <Text style={{ fontWeight: "700" }}>{fmt1(otherContributionForAutoCalc)}%</Text>
+                      Non-exam contribution so far: <Text style={{ fontWeight: "700" }}>{fmt1(otherContributionForAutoCalc)}%</Text>
                     </Text>
                     <Text style={[s.passText, { marginTop: 6 }]}>
-                      Exam needed to match final grade:{" "}
-                      <Text style={{ fontWeight: "800" }}>{fmt1(requiredExamToHitFinal)}%</Text>
+                      Exam needed to match final grade: <Text style={{ fontWeight: "800" }}>{fmt1(requiredExamToHitFinal)}%</Text>
                     </Text>
                     <Text style={[s.passText, { marginTop: 6, color: theme.textMuted }]}>
                       (If auto-calc is enabled, this value is written into your Exam item automatically.)
@@ -948,34 +1010,36 @@ export default function SubjectPlannerScreen() {
               </View>
             </View>
 
-            {/* NEW: swipe hint */}
-            <Text style={[s.swipeHint, { color: theme.textMuted }]}>Swipe left to delete item</Text>
+            <Text style={[s.swipeHint, { color: theme.textMuted }]}>Tap ▾ to collapse/expand • Swipe left to delete</Text>
           </View>
         }
         ListFooterComponent={Footer}
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
       />
 
-      <Modal visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)" }} edges={["top"]}>
-          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-            <View style={{ flex: 1, justifyContent: "flex-end" }}>
-              <View style={s.modalCard}>
-                <Text style={s.modalTitle}>Add assessment</Text>
-                <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 8 }}>
-                  <AddForm
-                    onCancel={() => setShowAdd(false)}
-                    onAdd={(payload) => {
-                      addItem(payload);
-                      setShowAdd(false);
-                    }}
-                  />
-                </ScrollView>
-              </View>
+      <Modal visible={showAdd} transparent animationType="fade" onRequestClose={() => setShowAdd(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+          <View style={s.centerOverlay}>
+            {/* tap outside to close */}
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowAdd(false)} />
+
+            <View style={s.centerCard}>
+              <Text style={s.modalTitle}>Add assessment</Text>
+
+              <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 16 }}>
+                <AddForm
+                  onCancel={() => setShowAdd(false)}
+                  onAdd={(payload) => {
+                    addItem(payload);
+                    setShowAdd(false);
+                  }}
+                />
+              </ScrollView>
             </View>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
+
     </SafeAreaView>
   );
 }
@@ -993,6 +1057,10 @@ type RowProps = {
   removeItem: (id: string) => void;
   clearItemGrade: (id: string) => void;
   clearItemDueDate: (id: string) => void;
+
+  // NEW
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 };
 
 function AssessmentRow({
@@ -1005,6 +1073,8 @@ function AssessmentRow({
   removeItem,
   clearItemGrade,
   clearItemDueDate,
+  collapsed,
+  onToggleCollapsed,
 }: RowProps) {
   const wobbleAnim = useRef(new Animated.Value(0)).current;
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -1038,17 +1108,51 @@ function AssessmentRow({
     opacity: isActive ? 0.97 : 1,
   };
 
-  const hasGrade = (item.grade ?? "").trim() !== "";
+  const gradeFilled = hasGrade(item);
   const w = clamp(toNum(item.weight), 0, 100);
   const g = clamp(toNum(item.grade ?? ""), 0, 100);
-  const contribution = hasGrade ? (w * g) / 100 : null;
+  const contribution = gradeFilled ? (w * g) / 100 : null;
 
   const dueDisplay = isoToDisplay(item.dueDateISO);
 
-  // NEW: full-width red underlay + instant delete on swipe open
+  const isAE = isAssignmentOrExam(item);
+
+  // Swipe: full-width red underlay + instant delete on swipe open
   const renderRightActions = () => (
     <View style={[s.deleteUnderlay]}>
       <Text style={s.deleteText}>Delete</Text>
+    </View>
+  );
+
+  // Collapsed summary (requested):
+  // - show result, weight, contribution
+  // - show due date only if NOT completed (we treat "completed" as having grade entered)
+  const Summary = (
+    <View style={{ marginTop: 10, gap: 8 }}>
+      <View style={{ flexDirection: "row", gap: 10 }}>
+        <View style={[s.summaryBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+          <Text style={[s.summaryLabel, { color: theme.textMuted }]}>Result</Text>
+          <Text style={[s.summaryValue, { color: theme.text }]}>{gradeFilled ? `${g.toFixed(1)}%` : "—"}</Text>
+        </View>
+
+        <View style={[s.summaryBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+          <Text style={[s.summaryLabel, { color: theme.textMuted }]}>Weight</Text>
+          <Text style={[s.summaryValue, { color: theme.text }]}>{`${w.toFixed(1)}%`}</Text>
+        </View>
+
+        <View style={[s.summaryBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+          <Text style={[s.summaryLabel, { color: theme.textMuted }]}>Contribution</Text>
+          <Text style={[s.summaryValue, { color: theme.text }]}>{contribution == null ? "—" : `${contribution.toFixed(1)}%`}</Text>
+        </View>
+      </View>
+
+      {!gradeFilled && (item.dueDateISO ?? "").trim() !== "" && (
+        <View style={[s.summaryLine, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+          <Ionicons name="calendar-outline" size={16} color={theme.textMuted} />
+          <Text style={[s.summaryLineText, { color: theme.text }]}>Due: {dueDisplay}</Text>
+        </View>
+      )}
+
     </View>
   );
 
@@ -1060,11 +1164,11 @@ function AssessmentRow({
         friction={1.6}
         overshootRight={false}
         onSwipeableOpen={() => {
-          // swipe + release => delete (no confirmation)
           removeItem(item.id);
         }}
       >
         <Animated.View style={[s.card, animatedStyle]}>
+          {/* Header row: name + expand/collapse + drag */}
           <View style={s.cardHeaderRow}>
             <TextInput
               value={item.name}
@@ -1075,116 +1179,129 @@ function AssessmentRow({
               returnKeyType="next"
               blurOnSubmit={false}
             />
+
+            {/* Collapse toggle */}
+            {isAE && (
+              <Pressable onPress={onToggleCollapsed} hitSlop={10} style={s.collapseBtn}>
+                <Ionicons name={collapsed ? "chevron-down-outline" : "chevron-up-outline"} size={18} color={theme.textMuted} />
+              </Pressable>
+            )}
+
             <Pressable onLongPress={drag} delayLongPress={150} style={s.dragHandle} hitSlop={10}>
               <Text style={{ color: theme.textMuted, fontSize: 18 }}>≡</Text>
             </Pressable>
           </View>
 
-          <View style={[s.row, { marginBottom: 8 }]}>
-            {(["Assignment", "Exam", "Quiz"] as const).map((kind) => {
-              const isActiveType = item.type === kind;
-              return (
+          {/* If Assignment/Exam AND collapsed -> show summary only */}
+          {isAE && collapsed ? (
+            Summary
+          ) : (
+            <>
+              <View style={[s.row, { marginBottom: 8 }]}>
+                {(["Assignment", "Exam", "Quiz"] as const).map((kind) => {
+                  const isActiveType = item.type === kind;
+                  return (
+                    <Pressable
+                      key={kind}
+                      onPress={() => updateItem(item.id, { type: kind })}
+                      style={[s.typeChip, isActiveType && [s.typeChipActive, { borderColor: theme.primary }]]}
+                    >
+                      <Text style={[s.typeChipText, isActiveType && { color: theme.primary }]}>{kind}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View style={{ marginBottom: 8 }}>
                 <Pressable
-                  key={kind}
-                  onPress={() => updateItem(item.id, { type: kind })}
-                  style={[s.typeChip, isActiveType && [s.typeChipActive, { borderColor: theme.primary }]]}
+                  onPress={() => updateItem(item.id, { hurdle: !item.hurdle })}
+                  style={[s.hurdleChip, item.hurdle && [s.hurdleChipActive, { borderColor: "#E25563" }]]}
                 >
-                  <Text style={[s.typeChipText, isActiveType && { color: theme.primary }]}>{kind}</Text>
+                  <Text style={[s.hurdleChipText, item.hurdle && { color: "#E25563" }]}>
+                    {item.hurdle ? "Hurdle requirement ✓" : "Hurdle requirement"}
+                  </Text>
                 </Pressable>
-              );
-            })}
-          </View>
+              </View>
 
-          <View style={{ marginBottom: 8 }}>
-            <Pressable
-              onPress={() => updateItem(item.id, { hurdle: !item.hurdle })}
-              style={[s.hurdleChip, item.hurdle && [s.hurdleChipActive, { borderColor: "#E25563" }]]}
-            >
-              <Text style={[s.hurdleChipText, item.hurdle && { color: "#E25563" }]}>
-                {item.hurdle ? "Hurdle requirement ✓" : "Hurdle requirement"}
-              </Text>
-            </Pressable>
-          </View>
+              {/* Due Date selector */}
+              <View style={{ marginBottom: 12 }}>
+                <Text style={s.label}>Due date</Text>
 
-          {/* Due Date selector */}
-          <View style={{ marginBottom: 12 }}>
-            <Text style={s.label}>Due date</Text>
+                <View style={s.inputWrap}>
+                  <Pressable onPress={() => setPickerOpen(true)} style={[s.input, s.inputWithIcon, { justifyContent: "center" }]}>
+                    <Text style={{ color: dueDisplay ? theme.text : theme.textMuted, fontSize: 16, fontWeight: "700" }}>
+                      {dueDisplay || "Select date (DD-MMM-YYYY)"}
+                    </Text>
+                  </Pressable>
 
-            <View style={s.inputWrap}>
-              <Pressable onPress={() => setPickerOpen(true)} style={[s.input, s.inputWithIcon, { justifyContent: "center" }]}>
-                <Text style={{ color: dueDisplay ? theme.text : theme.textMuted, fontSize: 16, fontWeight: "700" }}>
-                  {dueDisplay || "Select date (DD-MMM-YYYY)"}
+                  <Pressable
+                    onPress={() => clearItemDueDate(item.id)}
+                    disabled={(item.dueDateISO ?? "").trim() === ""}
+                    hitSlop={10}
+                    style={[s.inlineTrash, { opacity: (item.dueDateISO ?? "").trim() ? 1 : 0.25 }]}
+                  >
+                    <Ionicons name="trash-outline" size={18} color={theme.textMuted} />
+                  </Pressable>
+                </View>
+
+                <Text style={[s.contribText, { color: theme.textMuted, marginTop: 6 }]}>
+                  Tip: this syncs into the Calendar tab automatically.
                 </Text>
-              </Pressable>
 
-              <Pressable
-                onPress={() => clearItemDueDate(item.id)}
-                disabled={(item.dueDateISO ?? "").trim() === ""}
-                hitSlop={10}
-                style={[s.inlineTrash, { opacity: (item.dueDateISO ?? "").trim() ? 1 : 0.25 }]}
-              >
-                <Ionicons name="trash-outline" size={18} color={theme.textMuted} />
-              </Pressable>
-            </View>
+                <DatePickerModal
+                  visible={pickerOpen}
+                  initialISO={item.dueDateISO}
+                  theme={theme}
+                  onCancel={() => setPickerOpen(false)}
+                  onConfirm={(iso) => {
+                    updateItem(item.id, { dueDateISO: iso });
+                    setPickerOpen(false);
+                  }}
+                />
+              </View>
 
-            <Text style={[s.contribText, { color: theme.textMuted, marginTop: 6 }]}>
-              Tip: this syncs into the Calendar tab automatically.
-            </Text>
+              <View style={s.row}>
+                <View style={{ width: 96, flexGrow: 1 }}>
+                  <Text style={s.label}>Weight %</Text>
+                  <TextInput
+                    keyboardType="numeric"
+                    value={item.weight}
+                    onChangeText={(t) => updateItem(item.id, { weight: t.replace(/[^0-9.]/g, "") })}
+                    placeholder="%"
+                    placeholderTextColor={theme.textMuted}
+                    style={s.input}
+                    returnKeyType="next"
+                    blurOnSubmit={false}
+                  />
+                </View>
 
-            <DatePickerModal
-              visible={pickerOpen}
-              initialISO={item.dueDateISO}
-              theme={theme}
-              onCancel={() => setPickerOpen(false)}
-              onConfirm={(iso) => {
-                updateItem(item.id, { dueDateISO: iso });
-                setPickerOpen(false);
-              }}
-            />
-          </View>
+                <View style={{ width: 160, flexGrow: 1 }}>
+                  <Text style={s.label}>Grade %</Text>
+                  <InlineClearInput
+                    value={item.grade ?? ""}
+                    onChangeText={(t) => updateItem(item.id, { grade: t.replace(/[^0-9.]/g, "") })}
+                    keyboardType={Platform.OS === "ios" ? "decimal-pad" : "number-pad"}
+                    inputMode="decimal"
+                    placeholder="Result %"
+                    placeholderTextColor={theme.textMuted}
+                    clearEnabled={(item.grade ?? "").trim() !== ""}
+                    onClear={() => clearItemGrade(item.id)}
+                    theme={theme}
+                    s={s}
+                  />
+                </View>
+              </View>
 
-          <View style={s.row}>
-            <View style={{ width: 96, flexGrow: 1 }}>
-              <Text style={s.label}>Weight %</Text>
-              <TextInput
-                keyboardType="numeric"
-                value={item.weight}
-                onChangeText={(t) => updateItem(item.id, { weight: t.replace(/[^0-9.]/g, "") })}
-                placeholder="%"
-                placeholderTextColor={theme.textMuted}
-                style={s.input}
-                returnKeyType="next"
-                blurOnSubmit={false}
-              />
-            </View>
+              <View style={{ marginTop: 10 }}>
+                <Text style={[s.contribText, { color: theme.textMuted }]}>
+                  Contribution to final:{" "}
+                  <Text style={{ color: theme.text, fontWeight: "700" }}>{contribution == null ? "—" : `${contribution.toFixed(1)}%`}</Text>
+                </Text>
+              </View>
 
-            <View style={{ width: 160, flexGrow: 1 }}>
-              <Text style={s.label}>Grade %</Text>
-              <InlineClearInput
-                value={item.grade ?? ""}
-                onChangeText={(t) => updateItem(item.id, { grade: t.replace(/[^0-9.]/g, "") })}
-                keyboardType={Platform.OS === "ios" ? "decimal-pad" : "number-pad"}
-                inputMode="decimal"
-                placeholder="Result %"
-                placeholderTextColor={theme.textMuted}
-                clearEnabled={(item.grade ?? "").trim() !== ""}
-                onClear={() => clearItemGrade(item.id)}
-                theme={theme}
-                s={s}
-              />
-            </View>
-          </View>
 
-          <View style={{ marginTop: 10 }}>
-            <Text style={[s.contribText, { color: theme.textMuted }]}>
-              Contribution to final:{" "}
-              <Text style={{ color: theme.text, fontWeight: "700" }}>
-                {contribution == null ? "—" : `${contribution.toFixed(1)}%`}
-              </Text>
-            </Text>
-          </View>
-
-          {/* REMOVED: trashcan delete button (now swipe-to-delete) */}
+            </>
+          )}
         </Animated.View>
       </Swipeable>
     </View>
@@ -1269,9 +1386,7 @@ function AddForm({
           onPress={() => setHurdle((prev) => !prev)}
           style={[s.hurdleChip, hurdle && [s.hurdleChipActive, { borderColor: "#E25563" }]]}
         >
-          <Text style={[s.hurdleChipText, hurdle && { color: "#E25563" }]}>
-            {hurdle ? "Hurdle requirement ✓" : "Mark as hurdle requirement"}
-          </Text>
+          <Text style={[s.hurdleChipText, hurdle && { color: "#E25563" }]}>{hurdle ? "Hurdle requirement ✓" : "Mark as hurdle requirement"}</Text>
         </Pressable>
       </View>
 
@@ -1286,19 +1401,12 @@ function AddForm({
             </Text>
           </Pressable>
 
-          <Pressable
-            onPress={() => setDueISO(undefined)}
-            disabled={!dueISO}
-            hitSlop={10}
-            style={[s.inlineTrash, { opacity: dueISO ? 1 : 0.25 }]}
-          >
+          <Pressable onPress={() => setDueISO(undefined)} disabled={!dueISO} hitSlop={10} style={[s.inlineTrash, { opacity: dueISO ? 1 : 0.25 }]}>
             <Ionicons name="trash-outline" size={18} color={theme.textMuted} />
           </Pressable>
         </View>
 
-        <Text style={[s.contribText, { color: theme.textMuted, marginTop: 6 }]}>
-          Once set, this will appear in the Calendar tab.
-        </Text>
+        <Text style={[s.contribText, { color: theme.textMuted, marginTop: 6 }]}>Once set, this will appear in the Calendar tab.</Text>
 
         <DatePickerModal
           visible={pickerOpen}
@@ -1573,4 +1681,60 @@ const makeStyles = (t: ReturnType<typeof useTheme>["theme"]) =>
     hurdleChipText: { fontSize: 12, color: t.textMuted, fontWeight: "600" },
 
     dragHandle: { paddingHorizontal: 4, paddingVertical: 4, marginLeft: 4 },
+
+    // NEW: collapse button
+    collapseBtn: {
+      width: 34,
+      height: 34,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: t.border,
+      backgroundColor: t.bg,
+      alignItems: "center",
+      justifyContent: "center",
+      marginRight: 6,
+    },
+
+    // NEW: summary styles (collapsed view)
+    summaryBox: {
+      flex: 1,
+      borderWidth: 1,
+      borderRadius: 14,
+      padding: 10,
+      gap: 2,
+    },
+    summaryLabel: { fontSize: 10, fontWeight: "900", textTransform: "uppercase" },
+    summaryValue: { fontSize: 14, fontWeight: "900" },
+
+    summaryLine: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      borderWidth: 1,
+      borderRadius: 14,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+    },
+    summaryLineText: { fontSize: 13, fontWeight: "700" },
+
+    centerOverlay: {
+  flex: 1,
+  backgroundColor: "rgba(0,0,0,0.6)",
+  justifyContent: "center",
+  alignItems: "center",
+  padding: 22,
+},
+
+centerCard: {
+  width: "100%",
+  maxWidth: 520,
+  maxHeight: "88%",
+  backgroundColor: t.bg,
+  borderColor: t.border,
+  borderWidth: 1,
+  borderRadius: 22,
+  padding: 16,
+},
+
+
   });
