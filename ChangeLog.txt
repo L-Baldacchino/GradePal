@@ -1,6 +1,6 @@
 📄 Change Log for Grade Pal
 
-Last updated: 15 January 2026  
+Last updated: 16 January 2026  
 Developer: Luke Baldacchino / Tera Apps  
 
 ____________________________________________________________
